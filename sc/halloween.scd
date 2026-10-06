@@ -125,21 +125,40 @@ s.waitForBoot {
 
 	s.sync;
 
-	// Crickets: the anchor, three per ground speaker. They slow down as the
-	// scene gets colder (\tempo).
+	// Crickets: the anchor. Around each ground speaker a field of them, some
+	// close and bright, most farther off and duller, each with its own pitch,
+	// pace and uneven rhythm; a pulse falls slightly in pitch and has a little
+	// rasp. Each comes and goes on its own. A faint tree cricket trills in the
+	// distance now and then. They all slow down as the scene gets colder (\tempo).
 	Ndef(\crickets, {
 		var tempo = Lag.kr(\tempo.kr(1), 90);
 		var outs = Array.fill(n, { DC.ar(0) });
-		(ground * 3).do { |i|
+		(ground * 7).do { |i|
 			var ch = i % ground;
+			var dist = if(i < (ground * 2), Rand(0, 0.3), Rand(0.4, 1));   // 2 close, 5 farther, per speaker
 			var freq = Rand(4200, 5200);
-			var chirpRate = Rand(1.3, 2.6) * tempo * LFNoise1.kr(0.05).range(0.93, 1.07);
-			var pulseRate = Rand(28, 38) * tempo.sqrt;
-			var gate = Trig1.ar(Impulse.ar(chirpRate, Rand(0, 1)), IRand(3, 5) / pulseRate);
-			var pulse = Lag.ar(LFPulse.ar(pulseRate, 0, 0.45), 0.003);
+			var chirpRate = Rand(1.3, 2.6) * tempo * LFNoise1.kr(0.05).range(0.93, 1.07)
+				* LFNoise1.kr(Rand(1.5, 3)).range(0.8, 1.2);
+			var pulseRate = Rand(28, 38) * tempo.sqrt * LFNoise2.kr(0.3).range(0.96, 1.04);
+			var chirp = Impulse.ar(chirpRate, Rand(0, 1));
+			var gate = Trig1.ar(chirp, TIRand.ar(2, 5, chirp) / pulseRate);
+			var syl = Impulse.ar(pulseRate) * gate;
+			var sylLen = 0.55 / pulseRate;
+			var env = EnvGen.ar(Env([0, 1, 0.7, 0], [0.2, 0.4, 0.4] * sylLen, [2, 0, -3]), syl);
+			var accent = Latch.ar(LFNoise1.ar(40).range(0.5, 1), syl);
+			var drift = Latch.ar(LFNoise1.ar(3).range(0.994, 1.006), chirp);
+			var f = freq * drift * (1 - (env * 0.012));
+			var tone = SinOsc.ar(f) + (SinOsc.ar(f * 2) * 0.05) + (BPF.ar(WhiteNoise.ar, f, 0.04) * 1.5);
 			var active = LFNoise1.kr(Rand(0.01, 0.04)).range(-0.3, 1).clip(0, 1).lag(2);
-			var sig = SinOsc.ar(freq * (1 + (LFNoise2.kr(8) * 0.004))) + (SinOsc.ar(freq * 2) * 0.08);
-			outs[ch] = outs[ch] + (sig * pulse * Lag.ar(gate, 0.004) * active * Rand(0.02, 0.05));
+			var sig = LPF.ar(tone * env * accent, dist.linexp(0, 1, 14000, 5000));
+			outs[ch] = outs[ch] + (sig * active * dist.linexp(0, 1, 0.12, 0.025) * Rand(0.8, 1.2));
+		};
+		ground.do { |ch|
+			var on = LFNoise1.kr(Rand(0.005, 0.015)).range(-1, 1).clip(0, 1).lag(5);
+			var f = Rand(2600, 3000), rate = Rand(45, 60) * tempo;
+			var pulse = Lag.ar(LFPulse.ar(rate * LFNoise2.kr(0.2).range(0.97, 1.03), 0, 0.5), 0.004);
+			var trill = SinOsc.ar(f * (1 + (LFNoise2.kr(4) * 0.003))) + (BPF.ar(WhiteNoise.ar, f, 0.05) * 1.2);
+			outs[ch] = outs[ch] + (LPF.ar(trill * pulse, 5000) * on * 0.012);
 		};
 		outs
 	});
@@ -176,23 +195,26 @@ s.waitForBoot {
 		Array.fill(n, { |i| if(i >= ground) { Silent.ar } { voice.value } })
 	});
 
-	// Leaves: dry, leathery leaves rubbing against each other. No clicks, just
-	// friction: each speaker has a few clusters whose rubbing comes and goes
-	// with the gusts that sweep across the yard, rougher and brighter when
-	// they move faster. The tree speakers get a softer share.
+	// Leaves: dry, leathery leaves rustling. Mostly still; when a gust passes,
+	// clumps of leaves stir in short, uneven rustles (a second or two, bunched
+	// in flurries) that brighten as they move faster, then settle again. The
+	// gusts sweep across the yard; the tree speakers get a softer share.
 	Ndef(\leaves, {
-		var gust = LFNoise2.kr(0.04).range(0.25, 1).squared;
+		var gust = LFNoise2.kr(0.04).range(0, 1).squared;
 		Array.fill(n, { |i|
 			var up = i >= ground;
 			var g = DelayN.kr(gust, 10, if(up, 4, i * 3) + Rand(0, 1));
 			var sig = Array.fill(3, {
-				var speed = (LFNoise2.kr(Rand(0.4, 1.4)).abs * g * Rand(0.6, 1.2)).lag(0.15);
-				var grains = Decay2.ar(Dust.ar(speed.linexp(0, 1.2, 40, 1500)), 0.004, 0.025);
+				var stir = (LFNoise2.kr(Rand(0.3, 0.8)) * (0.4 + g) - 0.35).max(0);
+				var flurry = LFNoise1.kr(Rand(1.5, 4)).range(-0.4, 1).max(0);
+				var speed = (stir * flurry * 2.5).lag(0.08);
+				var clump = LFNoise1.kr(Rand(8, 15)).range(0.2, 1);
+				var grains = Decay2.ar(Dust.ar(speed * clump * 1200), 0.003, 0.03);
 				var scrape = BPF.ar(PinkNoise.ar * grains, Rand(700, 1500) * (1 + speed), 1.4);
-				var rub = BPF.ar(PinkNoise.ar, Rand(500, 1100) * (1 + speed), 2.5) * speed;
-				((scrape * 1.4) + (rub * 0.5)) * speed
+				var rub = BPF.ar(PinkNoise.ar, Rand(500, 1100) * (1 + speed), 2.5) * speed * 0.3;
+				((scrape * 1.4) + rub) * speed.min(1)
 			}).sum;
-			LPF.ar(sig, 4500) * if(up, 0.45, 0.9)
+			LPF.ar(sig, 4500) * if(up, 0.25, 0.5)
 		})
 	});
 
