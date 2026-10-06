@@ -53,7 +53,8 @@
 
 <section>
   <h2>Speakers</h2>
-  <div class="row"><label style="width:auto"><input type="checkbox" id="birdsOn"> Birds on the elevated speaker <span id="elevatedInfo"></span></label></div>
+  <div class="row"><label style="width:auto"><input type="checkbox" id="birdsOn"> Birds on the elevated speakers</label></div>
+  <div style="color:var(--dim);font-size:14px" id="speakerInfo"></div>
   <div class="row" style="color:var(--dim);font-size:14px" id="owlInfo"></div>
   <h2 style="margin-top:14px">Speaker test</h2>
   <div style="color:var(--dim);font-size:14px">Each speaker beeps its number, then plays a burst of noise. The ambience pauses while testing.</div>
@@ -104,7 +105,7 @@ function build() {
   });
   $('testBtns').innerHTML = '';
   const tests = [[0, 'Test all']];
-  for (let i = 1; i <= Math.min(sc.outputs || 2, 4); i++) tests.push([i, String(i)]);
+  for (let i = 1; i <= (sc.outputs || 2); i++) tests.push([i, String(i)]);
   tests.push([-1, 'Stop']);
   tests.forEach(([n, text]) => {
     const b = document.createElement('button');
@@ -131,8 +132,9 @@ function render() {
     });
   }
   $('birdsOn').checked = set.birds !== false;
-  $('elevatedInfo').textContent = sc.elevated ? `(speaker ${sc.elevated})` : '';
-  $('owlInfo').textContent = sc.online ? (sc.owls ? `${sc.owls} owl recordings loaded.` : 'No owl recordings found. Add them to ambientSounds/owls, then press Update.') : '';
+  $('speakerInfo').textContent = (sc.speakers || []).map((r, i) => `${i + 1}: ${r}`).join(' · ');
+  const voices = Object.entries(sc.voices || {}).map(([v, n]) => `${v} (${n})`).join(', ');
+  $('owlInfo').textContent = sc.online ? (sc.owls ? `Owl recordings: ${voices}.` : 'No owl recordings found. Add them to ambientSounds/owls, then press Update.') : '';
   document.querySelectorAll('[data-test]').forEach(b => b.classList.toggle('active', +b.dataset.test === sc.test && sc.test >= 0));
   document.querySelectorAll('[data-scene]').forEach(b => b.classList.toggle('active', b.dataset.scene === sc.scene));
   $('autoBtn').classList.toggle('active', !!sc.auto);

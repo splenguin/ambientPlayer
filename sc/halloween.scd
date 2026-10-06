@@ -1,11 +1,13 @@
-// Halloween night: restrained, slow-moving ambience for 3 ground speakers
-// and 1 tree speaker.
+// Halloween night: restrained, slow-moving ambience for ground speakers
+// around the yard plus elevated speakers up in the trees.
 //
 //   Crickets (the anchor), rolling fog, a low one-pitch drone, cornfield
 //   rustle, faint drifting spirits, and something creeping between the
 //   ground speakers. The crickets near it fall silent while it's close.
 //   Owls, from your recordings in ambientSounds/owls, call only from the
-//   elevated (tree) speaker.
+//   elevated speakers. Files are grouped into owls by name prefix (owlA_01.wav,
+//   owlA_02.wav... are owl "owlA"), and each elevated speaker can be given
+//   one owl, so two owls can call back and forth across the yard.
 //
 // Run: open in the SuperCollider IDE, click inside the outer parentheses,
 // press Ctrl+Enter. Ctrl+. stops everything.
@@ -18,16 +20,24 @@
 //   ~auto.();                 resume automatic scene changes after ~scene/~solo
 //   ~trim.(\fog, 0.5);        turn one layer down (or up, max 2) in every scene
 //
-// Logical speakers: 0, 1, 2 = ground (put them in walking order around the
-// yard, so the creeper and the fog move 0 -> 1 -> 2), 3 = tree. ~elevated
-// picks which real output (1-4) the tree goes to; the ground speakers take the
-// other three in order.
+// ~speakers gives each output a role, in output order:
+//   "ground"   on the ground: crickets, fog, drone, cornfield, creeper. Number
+//              them in walking order round the yard; the creeper and the
+//              fog move from one to the next.
+//   "birds"    elevated, any owl calls here
+//   "owlA" ... elevated, only that owl (matches the file prefix, any case)
+// Elevated speakers also get leaves stirring, a little fog and passing spirits.
+// Example for 2 ground + 2 tree speakers: ["ground", "ground", "owlA", "owlB"]
 
 (
 ~outputs = ~outputs ? 2;         // 2 = stereo fold-down for the desk, 4 = the yard
 ~sceneTime = ~sceneTime ? 600;   // average seconds per scene
 ~fadeTime = ~fadeTime ? 150;     // S-curve crossfade between scenes, seconds
-~elevated = ~elevated ? 4;       // output (1-4) of the elevated speaker that gets the birds
+~speakers = ~speakers ?? {      // one role per output (see above)
+	if(~outputs >= 4) {
+		Array.fill(~outputs, { |i| if(i == ((~elevated ? 4) - 1)) { "birds" } { "ground" } })
+	} { ["ground", "ground", "ground", "birds"] }  // desk: folded down to stereo
+};
 ~soundsDir = ~soundsDir ? "~/ambientSounds".standardizePath;  // the ambientSounds checkout
 
 if(s.serverRunning and: { s.options.numOutputBusChannels < ~outputs }) { s.quit };
@@ -35,8 +45,14 @@ s.options.numOutputBusChannels = max(s.options.numOutputBusChannels, ~outputs);
 
 s.waitForBoot {
 	var outputs = ~outputs, sceneTime = ~sceneTime, fadeTime = ~fadeTime;
-	var elevated = (~elevated.asInteger - 1).clip(0, 3);
-	var ground = 3, n = 4, tree = 3;             // logical layout
+	// Inside the patch, ground speakers come first (0 .. ground-1), then the
+	// elevated ones. The mixer puts each back on its real output.
+	var roles = ~speakers.collect { |r| r.asString };
+	var desk = outputs < roles.size;             // stereo preview of a bigger layout
+	var groundOuts = roles.indicesOfEqual("ground") ? [];
+	var upOuts = (0 .. roles.size - 1).reject { |i| groundOuts.includes(i) };
+	var ground = max(groundOuts.size, 1), n = ground + upOuts.size;
+	var upRoles = upOuts.collect { |o| roles[o].toLower };
 	var root = 73.42;                            // D2: the one pitch everything leans on
 	var layers = [\crickets, \fog, \drone, \corn, \spirits, \creeper, \owls];
 	var loadFolder = { |name|
@@ -44,9 +60,14 @@ s.waitForBoot {
 		var paths = (~soundsDir +/+ name +/+ "*").pathMatch
 			.select { |p| exts.includesEqual(p.splitext[1].asString.toLower) };
 		"halloween: % % recordings in %".format(paths.size, name, ~soundsDir +/+ name).postln;
-		paths.collect { |p| Buffer.readChannel(s, p, channels: [0]) }
+		paths
 	};
-	var owlCalls = loadFolder.("owls");
+	// Owl voices by file-name prefix: owlA_01.wav -> "owlA".
+	var owlVoices = Dictionary.new;
+	var owlPaths = loadFolder.("owls");
+	var owlChans = { |voice|                     // patch channels this owl may use
+		upRoles.collect { |r, k| if(r == "birds" or: { r == voice.toLower }) { ground + k } }.reject(_.isNil)
+	};
 	var presence = Bus.control(s, ground);       // where the creeper is, 0..1 per ground speaker
 	var levels = IdentityDictionary.new;         // current scene levels, read by the event layers
 	var scenes, next, applyScene;
@@ -88,6 +109,15 @@ s.waitForBoot {
 		Out.ar(out + chan, HPF.ar(sig, 120) * env * amp);
 	}).add;
 
+	owlPaths.do { |p|
+		var voice = p.basename.findRegexp("^[A-Za-z]+")[0] !? (_[1]) ? "owl";
+		owlVoices[voice] = (owlVoices[voice] ? []).add(Buffer.readChannel(s, p, channels: [0]));
+	};
+	owlVoices.keysValuesDo { |v, bufs|
+		"halloween: owl % has % recordings, plays on outputs %".format(v, bufs.size,
+			owlChans.(v).collect { |c| upOuts[c - ground] + 1 }).postln;
+	};
+
 	s.sync;
 
 	// Crickets: the anchor, three per ground speaker. They slow down as the
@@ -115,16 +145,16 @@ s.waitForBoot {
 	Ndef(\fog, {
 		var front = LFNoise2.kr(0.015).range(0.15, 1).squared;
 		Array.fill(n, { |i|
-			var here = DelayN.kr(front, 40, if(i == tree, 18, i * 15) + Rand(0, 3));
+			var here = DelayN.kr(front, 40, if(i >= ground, 18, i * 15) + Rand(0, 3));
 			var rumble = LPF.ar(BrownNoise.ar, LFNoise2.kr(0.05).exprange(150, 400)) * 0.5;
 			var air = BPF.ar(PinkNoise.ar, LFNoise2.kr(0.03).exprange(500, 1500), 1.5) * 0.15;
-			(rumble + air) * here * if(i == tree, 0.12, 0.3)
+			(rumble + air) * here * if(i >= ground, 0.12, 0.3)
 		})
 	});
 
 	// Drone: one low pitch, a slowly shifting "vowel" that makes it groan,
 	// and a faint bowed-metal shimmer. Each ground speaker is detuned a hair,
-	// so the drone beats slowly across the yard. Nothing from the tree.
+	// so the drone beats slowly across the yard. Nothing from the trees.
 	Ndef(\drone, {
 		var voice = {
 			var f = root + Rand(-0.12, 0.12);
@@ -136,7 +166,7 @@ s.waitForBoot {
 			var breathe = LFNoise2.kr(Rand(0.02, 0.05)).range(0.4, 1);
 			(body + vowel + (metal * 0.5)) * breathe * 0.15
 		};
-		Array.fill(n, { |i| if(i == tree) { Silent.ar } { voice.value } })
+		Array.fill(n, { |i| if(i >= ground) { Silent.ar } { voice.value } })
 	});
 
 	// Cornfield: dry papery rustle in gusts that sweep across the ground
@@ -144,19 +174,19 @@ s.waitForBoot {
 	Ndef(\corn, {
 		var gust = LFNoise2.kr(0.05).range(0, 1).squared;
 		Array.fill(n, { |i|
-			var g = DelayN.kr(gust, 10, if(i == tree, 4, i * 3) + Rand(0, 1));
-			var dens = g.linexp(0, 1, 3, if(i == tree, 80, 300));
+			var g = DelayN.kr(gust, 10, if(i >= ground, 4, i * 3) + Rand(0, 1));
+			var dens = g.linexp(0, 1, 3, if(i >= ground, 80, 300));
 			var dry = BPF.ar(WhiteNoise.ar * Decay2.ar(Dust.ar(dens), 0.0005, Rand(0.01, 0.03)),
 				LFNoise1.kr(0.5).exprange(2000, 6000), 1.2);
 			var flap = BPF.ar(PinkNoise.ar * Decay2.ar(Dust.ar(dens * 0.2), 0.002, 0.06), Rand(700, 1200), 0.8);
 			var hiss = HPF.ar(PinkNoise.ar, 3000) * 0.03;
-			var ctrig = Dust.kr(if(i == tree, 0, 0.01));
+			var ctrig = Dust.kr(if(i >= ground, 0, 0.01));
 			var clen = Rand(0.6, 1.8);
 			var cenv = EnvGen.kr(Env.sine(clen), ctrig);
 			var crate = EnvGen.kr(Env([Rand(15, 25), Rand(35, 60)], [clen]), ctrig);
 			var creak = Ringz.ar(Impulse.ar(crate) * cenv,
 				[Rand(350, 450), Rand(900, 1100), Rand(1700, 2000)], [0.03, 0.02, 0.015]).sum * 0.04;
-			(((dry * 0.6) + (flap * 0.4) + hiss) * g * if(i == tree, 0.5, 1)) + creak
+			(((dry * 0.6) + (flap * 0.4) + hiss) * g * if(i >= ground, 0.5, 1)) + creak
 		})
 	});
 
@@ -185,7 +215,7 @@ s.waitForBoot {
 	Ndef(\creeper, Pspawner({ |sp|
 		sp.wait(rrand(10, 30));
 		loop {
-			if((levels[\creeperAmp] ? 0) > 0.1) {
+			if((levels[\creeperAmp] ? 0) > 0.1 and: { ground >= 2 }) {
 				var pos = rrand(0.0, ground - 1.0), dir = [-1, 1].choose;
 				rrand(6, 16).do {
 					var ch = pos.floor.min(ground - 2).asInteger, frac = pos - ch;
@@ -205,27 +235,36 @@ s.waitForBoot {
 		}
 	}));
 
-	// Owls: one bird calls a few times from the elevated speaker, sometimes
-	// answered by a second, farther-off owl, then the trees go quiet for a few
-	// minutes. Needs recordings in ambientSounds/owls (short clips work best).
+	// Owls: one owl calls a few times from its elevated speaker, sometimes
+	// answered by another owl from its own speaker (or, with only one owl, a
+	// farther-off one), then the trees go quiet for a few minutes.
 	Ndef(\owls).ar(n);
 	Ndef(\owls, Pspawner({ |sp|
-		var call = { |buf, rate, far|
+		var call = { |buf, chan, rate, far|
 			var dur = buf.numFrames / buf.sampleRate / rate;
 			var len = min(dur, rrand(6.0, 12.0));
 			var start = if(dur > len) { rrand(0, (dur - len) * buf.sampleRate * rate) } { 0 };
-			Pbind(\instrument, \call, \chan, tree, \buf, buf, \rate, rate, \start, start,
+			Pbind(\instrument, \call, \chan, chan, \buf, buf, \rate, rate, \start, start,
 				\len, len, \far, far, \amp, rrand(0.15, 0.3), \dur, Pseq([len]))
 		};
+		var playable = { owlVoices.keys.asArray.select { |v| owlChans.(v).notEmpty } };
 		sp.wait(rrand(15, 45));
 		loop {
-			if(owlCalls.notEmpty and: { (levels[\owlsAmp] ? 0) > 0.1 }) {
-				var buf = owlCalls.choose, rate = rrand(0.97, 1.03), far = rrand(0.0, 0.3);
+			var voices = playable.value;
+			if(voices.notEmpty and: { (levels[\owlsAmp] ? 0) > 0.1 }) {
+				var voice = voices.choose, chan = owlChans.(voice).choose;
+				var buf = owlVoices[voice].choose, rate = rrand(0.97, 1.03), far = rrand(0.0, 0.3);
 				rrand(1, 4).do {
-					sp.seq(call.(buf, rate * rrand(0.99, 1.01), far));
-					if(0.3.coin and: { owlCalls.size > 0 }) {
+					sp.seq(call.(buf, chan, rate * rrand(0.99, 1.01), far));
+					if(0.3.coin) {
+						var others = voices.reject(_ == voice);
 						sp.wait(rrand(1.5, 5.0));
-						sp.seq(call.(owlCalls.choose, rrand(0.95, 1.05), rrand(0.6, 0.9)));
+						if(others.notEmpty) {
+							var v2 = others.choose;
+							sp.seq(call.(owlVoices[v2].choose, owlChans.(v2).choose, rrand(0.97, 1.03), rrand(0.0, 0.3)));
+						} {
+							sp.seq(call.(owlVoices[voice].choose, chan, rrand(0.95, 1.05), rrand(0.6, 0.9)));
+						};
 					};
 					sp.wait(rrand(4.0, 15.0));
 				};
@@ -245,17 +284,21 @@ s.waitForBoot {
 		}.sum;
 		sig = sig + (FreeVerb.ar(sig, 1, 0.9, 0.6) * VarLag.kr(\verb.kr(0.15), fade, warp: \sin));
 		sig = Limiter.ar(LeakDC.ar(sig) * Lag.kr(\master.kr(1), 1), 0.9);
-		if(outputs >= 4) {
-			// tree to the elevated output, ground speakers to the others in order
-			var outs = Array.newClear(4);
-			outs[elevated] = sig[tree];
-			(0..3).reject(_ == elevated).do { |o, i| outs[o] = sig[i] };
+		if(desk.not) {
+			// each patch channel back to its real output
+			var outs = Array.fill(roles.size, { Silent.ar });
+			groundOuts.do { |o, i| outs[o] = sig[i] };
+			upOuts.do { |o, k| outs[o] = sig[ground + k] };
 			outs
 		} {
-			// desk preview: ground 0 left, 1 centre, 2 right, tree centre
-			[sig[0] + (sig[1] * 0.7) + (sig[3] * 0.6), sig[2] + (sig[1] * 0.7) + (sig[3] * 0.6)] * 0.8
+			// desk preview: ground speakers spread left to right, trees centre
+			var mix = groundOuts.size.collect { |i|
+				Pan2.ar(sig[i], if(groundOuts.size > 1) { i.linlin(0, groundOuts.size - 1, -1, 1) } { 0 }, 0.8)
+			}.sum;
+			upOuts.size.do { |k| mix = mix + Pan2.ar(sig[ground + k], 0, 0.6) };
+			mix
 		}
-	}).play(0, min(outputs, 4));
+	}).play(0, if(desk) { 2 } { roles.size });
 
 	// Scenes: target levels for each layer, plus reverb and cricket tempo.
 	scenes = (
@@ -289,7 +332,9 @@ s.waitForBoot {
 	~auto = { Tdef(\scenes).play };
 	~trim = { |layer, amp| Ndef(\mix).set((layer ++ "Trim").asSymbol, amp.clip(0, 2)) };
 	~birds = { |on| Ndef(\mix).set(\birds, if(on) { 1 } { 0 }) };
-	~owlCount = owlCalls.size;
+	~owlVoices = owlVoices.collect(_.size);       // voice -> number of recordings
+	~owlCount = owlVoices.values.collect(_.size).sum ? 0;
+	~roles = roles;
 	~solo = { |layer, fade = 3|
 		var sc = (verb: 0.15, tempo: 1);
 		layers.do { |l| sc[(l ++ "Amp").asSymbol] = if(l == layer, 1, 0) };

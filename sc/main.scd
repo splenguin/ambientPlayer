@@ -8,14 +8,15 @@
 //   /master <0..1>         overall level
 //   /start [fade]          fade the sound in
 //   /stop [fade]           fade the sound out (the patch keeps running silently)
-//   /birds <0|1>           birds (owls) on the elevated speaker off or on
-//   /test <n>              speaker test: n = 1..4 repeats one speaker, 0 cycles
+//   /birds <0|1>           birds (owls) on the elevated speakers off or on
+//   /test <n>              speaker test: n = 1..N repeats one speaker, 0 cycles
 //                          through all of them, -1 ends the test
 //
 // Every 2 s it writes its state as JSON to $AMBIENT_STATUS for the web page.
 // Environment: AMBIENT_OUTPUTS (default 4), AMBIENT_STATUS (default /tmp/ambient-status.json),
 // AMBIENT_DEVICE2 (set when a second stereo card provides outputs 3 and 4),
-// AMBIENT_ELEVATED (output 1-4 of the elevated bird speaker, default 4),
+// AMBIENT_SPEAKERS (role of each output, e.g. "ground ground owlA owlB"; see
+// halloween.scd), AMBIENT_ELEVATED (older setting: which output gets "birds"),
 // AMBIENT_SOUNDS (the ambientSounds checkout, default ~/ambientSounds).
 
 (
@@ -31,6 +32,9 @@ var device2 = "AMBIENT_DEVICE2".getenv ? "";
 
 ~outputs = ("AMBIENT_OUTPUTS".getenv ? "4").asInteger;
 ~elevated = envOr.("AMBIENT_ELEVATED", "4").asInteger;
+~speakers = envOr.("AMBIENT_SPEAKERS", "").split($ ).collect(_.split($,)).flatten
+	.reject(_.isEmpty);
+if(~speakers.isEmpty) { ~speakers = nil };
 ~soundsDir = envOr.("AMBIENT_SOUNDS", "~/ambientSounds").standardizePath;
 // With a second card (bridged into JACK as "card2"), outputs 3 and 4 go there.
 if(device2.size > 0) {
@@ -78,7 +82,7 @@ s.doWhenBooted {
 };
 OSCdef(\ambTest, { |msg|
 	var which = num.(msg[1], 0).asInteger;
-	var count = min(~outputs, 4);
+	var count = ~outputs;
 	testTask.stop;
 	testing = which.clip(-1, count);
 	if(testing < 0) {
@@ -104,11 +108,14 @@ OSCdef(\ambTest, { |msg|
 Routine {
 	loop {
 		var esc = { |x| x.asString.replace("\\", "\\\\").replace("\"", "\\\"") };
-		var json = "{\"boot\": %, \"scene\": \"%\", \"auto\": %, \"playing\": %, \"master\": %, \"outputs\": %, \"elevated\": %, \"birds\": %, \"owls\": %, \"test\": %, \"cpuAvg\": %, \"cpuPeak\": %, \"layers\": [%], \"scenes\": [%], \"trims\": {%}}";
+		var json = "{\"boot\": %, \"scene\": \"%\", \"auto\": %, \"playing\": %, \"master\": %, \"outputs\": %, \"speakers\": [%], \"voices\": {%}, \"birds\": %, \"owls\": %, \"test\": %, \"cpuAvg\": %, \"cpuPeak\": %, \"layers\": [%], \"scenes\": [%], \"trims\": {%}}";
 		var f;
 		json = json.format(
 			bootTime, esc.(~currentScene ? ""), Tdef(\scenes).isPlaying, playing, master,
-			~outputs, ~elevated, birds, ~owlCount ? 0, testing, (s.avgCPU ? 0).round(0.1), (s.peakCPU ? 0).round(0.1),
+			~outputs,
+			(~roles ? []).collect { |r| "\"%\"".format(esc.(r)) }.join(", "),
+			(~owlVoices ?? { () }).asAssociations.collect { |a| "\"%\": %".format(esc.(a.key), a.value) }.join(", "),
+			birds, ~owlCount ? 0, testing, (s.avgCPU ? 0).round(0.1), (s.peakCPU ? 0).round(0.1),
 			(~layers ? []).collect { |l| "\"%\"".format(l) }.join(", "),
 			(~sceneNames ? []).collect { |l| "\"%\"".format(l) }.join(", "),
 			(~layers ? []).collect { |l| "\"%\": %".format(l, trims[l] ? 1) }.join(", ")

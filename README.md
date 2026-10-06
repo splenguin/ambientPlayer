@@ -75,23 +75,41 @@ resampling so the two clocks don't drift apart.
 Outputs: ambA left = ground 1, ambA right = ground 2, ambB left = ground 3,
 ambB right = the tree.
 
-### Owls and the elevated speaker
+### Speaker roles and owls
 
-Owls are played from recordings in the
+Each output has a role, set by `AMBIENT_SPEAKERS` in `/etc/default/ambient`,
+listed in output order:
+
+- `ground`: on the ground. Crickets, fog, drone, cornfield and the creeper.
+  List them in walking order round the yard; the creeper and the fog move
+  from one to the next.
+- `birds`: up a tree. Any owl calls here.
+- `owlA`, `owlB`, ...: up a tree, and only that owl calls here.
+
+Elevated speakers also get leaves stirring, a little fog and passing spirits.
+
+```
+AMBIENT_SPEAKERS="ground ground ground birds"   # 3 on the ground, 1 tree (default)
+AMBIENT_SPEAKERS="ground ground owlA owlB"      # 2 on the ground, one owl in each of 2 trees
+```
+
+Owls play recordings from the
 [ambientSounds](https://github.com/splenguin/ambientSounds) repo (`owls/`),
-which the installer clones to `~/ambientSounds`. They only ever come from the
-elevated speaker: output 4 by default, or set `AMBIENT_ELEVATED=1..4` in
-`/etc/default/ambient`. The ground speakers take the other three outputs in
-order. **Birds** on the control page turns them on or off.
+which the installer clones to `~/ambientSounds`. Files are grouped into owls by
+the letters at the start of their names, so `owlA_01.wav` and `owlA 2.wav`
+are both owl `owlA`. An owl calls a few times from its own speaker, and
+sometimes the other owl answers from its speaker. An owl with no speaker
+assigned stays silent. **Birds** on the control page turns all of them on or
+off, and the page lists each speaker's role and the owls it found.
 
-Add recordings by committing them to ambientSounds; its README covers format
-and licensing. Then press **Update from GitHub**.
+After changing roles, run `sudo systemctl restart ambient-sc`. To add
+recordings, commit them to ambientSounds and press **Update from GitHub**.
 
 ### Speaker test
 
 On the control page, under **Speaker test**, each speaker beeps its number,
 then plays a burst of soft noise. **Test all** goes round all of them;
-**1** to **4** repeats one. The ambience pauses until you press **Stop**.
+a number repeats one. The ambience pauses until you press **Stop**.
 
 ## Changing the sound
 
