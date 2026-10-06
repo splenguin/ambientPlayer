@@ -57,10 +57,12 @@ OSCdef(\ambMaster, { |msg|
 }, '/master');
 OSCdef(\ambStart, { |msg|
 	playing = true;
-	Ndef(\mix).play(0, min(~outputs, 4), fadeTime: num.(msg[1], 10));
+	if(testing >= 0) { testTask.stop; testing = -1 };
+	Ndef(\mix).play(0, ~mixChannels, fadeTime: num.(msg[1], 10));
 }, '/start');
 OSCdef(\ambStop, { |msg|
 	playing = false;
+	if(testing >= 0) { testTask.stop; testing = -1 };
 	Ndef(\mix).stop(num.(msg[1], 10));
 }, '/stop');
 OSCdef(\ambBirds, { |msg|
@@ -86,7 +88,7 @@ OSCdef(\ambTest, { |msg|
 	testTask.stop;
 	testing = which.clip(-1, count);
 	if(testing < 0) {
-		if(playing) { Ndef(\mix).play(0, count, fadeTime: 2) };
+		if(playing) { Ndef(\mix).play(0, ~mixChannels, fadeTime: 2) };
 	} {
 		Ndef(\mix).stop(0.5);
 		testTask = Task {

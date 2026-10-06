@@ -34,8 +34,8 @@
 <section>
   <h2>Sound</h2>
   <div class="row">
-    <button id="playBtn" class="primary">Fade in</button>
-    <button id="stopBtn">Fade out</button>
+    <button id="playBtn">▶ Play</button>
+    <button id="stopBtn">■ Stop</button>
   </div>
   <div class="row"><label>Volume</label><input type="range" id="master" min="0" max="1" step="0.01"><span class="val" id="masterVal"></span></div>
 </section>
@@ -122,7 +122,7 @@ function render() {
   const sc = st.sc, set = st.settings;
   $('dot').className = 'dot' + (sc.online ? ' on' : '');
   $('statusText').innerHTML = sc.online
-    ? `${sc.playing ? 'Playing' : 'Faded out'} · scene <b>${label(sc.scene || '–')}</b>${sc.auto ? ' (drifting)' : ' (held)'} · CPU ${sc.cpuAvg}% avg, ${sc.cpuPeak}% peak`
+    ? `${sc.test >= 0 ? 'Speaker test' : sc.playing ? 'Playing' : 'Stopped'} · scene <b>${label(sc.scene || '–')}</b>${sc.auto ? ' (drifting)' : ' (held)'} · CPU ${sc.cpuAvg}% avg, ${sc.cpuPeak}% peak`
     : 'SuperCollider is not running';
   if (!dragging) {
     $('master').value = set.master; $('masterVal').textContent = (+set.master).toFixed(2);
@@ -138,6 +138,9 @@ function render() {
   document.querySelectorAll('[data-test]').forEach(b => b.classList.toggle('active', +b.dataset.test === sc.test && sc.test >= 0));
   document.querySelectorAll('[data-scene]').forEach(b => b.classList.toggle('active', b.dataset.scene === sc.scene));
   $('autoBtn').classList.toggle('active', !!sc.auto);
+  const live = sc.online && sc.test < 0;
+  $('playBtn').classList.toggle('primary', live && !!sc.playing);
+  $('stopBtn').classList.toggle('primary', live && !sc.playing);
 }
 
 function refresh() {
@@ -146,8 +149,8 @@ function refresh() {
   });
 }
 
-$('playBtn').onclick = () => cmd('start', 10.0);
-$('stopBtn').onclick = () => cmd('stop', 10.0);
+$('playBtn').onclick = () => cmd('start', 3.0);
+$('stopBtn').onclick = () => cmd('stop', 3.0);
 $('autoBtn').onclick = () => cmd('auto');
 $('birdsOn').onchange = e => post('/api/settings', {birds:e.target.checked}).then(refresh);
 $('master').oninput = e => { dragging = true; $('masterVal').textContent = (+e.target.value).toFixed(2); };

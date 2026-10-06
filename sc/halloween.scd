@@ -298,7 +298,7 @@ s.waitForBoot {
 			upOuts.size.do { |k| mix = mix + Pan2.ar(sig[ground + k], 0, 0.6) };
 			mix
 		}
-	}).play(0, if(desk) { 2 } { roles.size });
+	}).play(0, ~mixChannels = if(desk) { 2 } { roles.size });
 
 	// Scenes: target levels for each layer, plus reverb and cricket tempo.
 	scenes = (
