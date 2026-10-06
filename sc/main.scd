@@ -3,7 +3,7 @@
 //
 //   /scene <name> [fade]   jump to a scene: clear fogRising deepFog leafWind creaking
 //   /auto                  resume automatic scene changes
-//   /solo <layer>          one layer alone: crickets fog drone leaves spirits creak owls
+//   /solo <layer>          one layer alone: crickets fog drone leaves spirits whispers creak owls
 //   /trim <layer> <0..2>   turn one layer down or up in every scene
 //   /master <0..1>         overall level
 //   /start [fade]          fade the sound in

@@ -7,7 +7,7 @@ A small web page on the Pi lets you change scenes, set
 levels and schedule the nightly fade in and out from your phone.
 
 ```
-sc/halloween.scd     the sound: crickets, fog, drone, leaves, spirits, creaks, owls
+sc/halloween.scd     the sound: crickets, fog, drone, leaves, spirits, whispers, creaks, owls
 sc/main.scd          Pi entry point: loads the patch, listens for OSC, writes status
 tools/               name-usb-cards.sh: fixed names for USB sound cards
 web/server.py        control page and its API (Python standard library only)

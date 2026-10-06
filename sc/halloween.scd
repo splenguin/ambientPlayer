@@ -3,7 +3,8 @@
 //
 //   Crickets (the anchor), rolling fog, a deep textured rumble under the
 //   ground, dry leaves rubbing in the wind, spirits drifting between the
-//   speakers, and old wood creaking as the trees sway.
+//   speakers, wordless whispering in the dark, and old wood creaking as
+//   the trees sway.
 //   Owls, from your recordings in ambientSounds/owls, call only from the
 //   elevated speakers. Files are grouped into owls by name prefix (owlA_01.wav,
 //   owlA_02.wav... are owl "owlA"), and each elevated speaker can be given
@@ -15,7 +16,7 @@
 // While it runs:
 //   ~scene.(\deepFog);        jump to a scene (normal slow fade)
 //   ~scene.(\clear, 5);       ...with a 5 second fade instead
-//   ~solo.(\drone);           hear one layer alone (\crickets \fog \drone \leaves \spirits \creak \owls)
+//   ~solo.(\drone);           hear one layer alone (\crickets \fog \drone \leaves \spirits \whispers \creak \owls)
 //   ~birds.(false);           turn the birds off (true to bring them back)
 //   ~auto.();                 resume automatic scene changes after ~scene/~solo
 //   ~trim.(\fog, 0.5);        turn one layer down (or up, max 2) in every scene
@@ -54,7 +55,7 @@ s.waitForBoot {
 	var ground = max(groundOuts.size, 1), n = ground + upOuts.size;
 	var upRoles = upOuts.collect { |o| roles[o].toLower };
 	var root = 73.42;                            // D2: the one pitch everything leans on
-	var layers = [\crickets, \fog, \drone, \leaves, \spirits, \creak, \owls];
+	var layers = [\crickets, \fog, \drone, \leaves, \spirits, \whispers, \creak, \owls];
 	var loadFolder = { |name|
 		var exts = ["wav", "aif", "aiff", "flac", "ogg"];
 		var paths = (~soundsDir +/+ name +/+ "*").pathMatch
@@ -101,6 +102,33 @@ s.waitForBoot {
 		var sig = HPF.ar(breath + moan, 150) * env * amp;
 		Out.ar(out + from, sig * (1 - glide).sqrt);
 		Out.ar(out + to, sig * glide.sqrt);
+	}).add;
+
+	// A whispered phrase: no words, just the shapes of them. Breath through
+	// shifting vowel formants a few syllables a second, with hissed consonants
+	// in front of some syllables, sometimes drifting from one speaker to
+	// another. \size shifts the formants (a smaller or larger whisperer),
+	// \far makes it quieter and duller.
+	SynthDef(\whisper, { |out = 0, chan = 0, to = 0, len = 2, amp = 0.2, rate = 5, size = 1, far = 0|
+		var env = EnvGen.ar(Env([0, 1, 1, 0], [0.15, max(len - 0.4, 0.1), 0.25], \sin), doneAction: 2);
+		var trig = Impulse.kr(rate * LFNoise1.kr(3).range(0.6, 1.4));
+		var idx = TIRand.kr(0, 7, trig);
+		var f1 = Lag.kr(Select.kr(idx, [400, 800, 650, 520, 330, 720, 600, 560]), 0.04) * size;
+		var f2 = Lag.kr(Select.kr(idx, [900, 1150, 900, 1080, 2250, 1750, 1200, 1400]), 0.04) * size;
+		var f3 = Lag.kr(Select.kr(idx, [2300, 2500, 2450, 2300, 3000, 2450, 2400, 1800]), 0.04) * size;
+		var vtrig = TDelay.kr(trig, 0.04);
+		var venv = EnvGen.ar(Env([0, 1, 0.5, 0], [0.025, 0.06, 0.08], [2, 0, -3]), vtrig)
+			* Latch.kr(LFNoise1.kr(20).range(0.3, 1), vtrig);
+		var fenv = EnvGen.ar(Env.perc(0.01, 0.07), trig) * (TRand.kr(0, 1, trig) < 0.55);
+		var src = (PinkNoise.ar * 0.7) + (WhiteNoise.ar * 0.3);
+		var vowel = BPF.ar(src, [f1, f2, f3], [0.12, 0.09, 0.08], [1, 0.7, 0.35]).sum * 4;
+		var hiss = BPF.ar(WhiteNoise.ar, TExpRand.kr(2500, 7000, trig), 0.6) * fenv * 0.6;
+		var breath = HPF.ar(src, 1500) * 0.04;
+		var sig = ((vowel * venv) + hiss + breath) * env * amp;
+		var pos = Line.kr(0, 1, len), same = (chan - to).abs < 0.5;
+		sig = HPF.ar(LPF.ar(sig, far.linexp(0, 1, 9000, 2500)), 150) * far.linlin(0, 1, 1, 0.4);
+		Out.ar(out + chan, sig * Select.kr(same, [(1 - pos).sqrt, 1]));
+		Out.ar(out + to, sig * pos.sqrt * (1 - same));
 	}).add;
 
 	// A recorded call, played from one speaker. Long recordings get a random
@@ -238,6 +266,35 @@ s.waitForBoot {
 		}
 	}));
 
+	// Whispers: someone unseen mutters a few phrases from one spot, sometimes
+	// shifting a little as they go; now and then another answers from
+	// elsewhere. Then silence for a while.
+	Ndef(\whispers).ar(n);
+	Ndef(\whispers, Pspawner({ |sp|
+		var phrase = { |chan, size, far|
+			var len = rrand(1.0, 3.5);
+			var to = if(0.3.coin) { (chan + [-1, 1].choose) % n } { chan };
+			Pbind(\instrument, \whisper, \chan, chan, \to, to, \len, len, \rate, rrand(4.0, 7.0),
+				\size, size * rrand(0.98, 1.02), \far, far, \amp, rrand(0.35, 0.6), \dur, Pseq([len]))
+		};
+		sp.wait(rrand(5, 20));
+		loop {
+			if((levels[\whispersAmp] ? 0) > 0.1) {
+				var chan = n.rand, size = rrand(0.85, 1.15), far = rrand(0.0, 0.6);
+				rrand(2, 6).do {
+					sp.seq(phrase.(chan, size, far));
+					if(0.25.coin and: { n > 1 }) {
+						var other = (chan + rrand(1, n - 1)) % n;
+						sp.wait(rrand(0.2, 1.0));
+						sp.seq(phrase.(other, rrand(0.85, 1.15), rrand(0.2, 0.8)));
+					};
+					sp.wait(rrand(0.3, 1.8));
+				};
+				sp.wait(rrand(10, 50));
+			} { sp.wait(5) };
+		}
+	}));
+
 	// Creaks: somewhere an old limb or post creaks as the wind pushes it, a
 	// few groans in a row as it sways back and forth, then quiet for a while.
 	// Mostly from the trees when there are tree speakers.
@@ -328,11 +385,11 @@ s.waitForBoot {
 
 	// Scenes: target levels for each layer, plus reverb and cricket tempo.
 	scenes = (
-		clear:     (cricketsAmp: 1.0, fogAmp: 0.0, droneAmp: 0.0,  leavesAmp: 0.3, spiritsAmp: 0.0, creakAmp: 0.2, owlsAmp: 0.8, verb: 0.12, tempo: 1.0),
-		fogRising: (cricketsAmp: 0.8, fogAmp: 0.8, droneAmp: 0.4,  leavesAmp: 0.2, spiritsAmp: 0.4, creakAmp: 0.0, owlsAmp: 0.5, verb: 0.2,  tempo: 0.9),
-		deepFog:   (cricketsAmp: 0.5, fogAmp: 1.0, droneAmp: 0.9,  leavesAmp: 0.0, spiritsAmp: 0.8, creakAmp: 0.0, owlsAmp: 0.3, verb: 0.3,  tempo: 0.8),
-		leafWind:  (cricketsAmp: 0.9, fogAmp: 0.1, droneAmp: 0.15, leavesAmp: 1.0, spiritsAmp: 0.0, creakAmp: 0.6, owlsAmp: 0.6, verb: 0.12, tempo: 1.0),
-		creaking:  (cricketsAmp: 0.7, fogAmp: 0.3, droneAmp: 0.5,  leavesAmp: 0.5, spiritsAmp: 0.3, creakAmp: 1.0, owlsAmp: 0.2, verb: 0.18, tempo: 0.95)
+		clear:     (cricketsAmp: 1.0, fogAmp: 0.0, droneAmp: 0.0,  leavesAmp: 0.3, spiritsAmp: 0.0, whispersAmp: 0.0, creakAmp: 0.2, owlsAmp: 0.8, verb: 0.12, tempo: 1.0),
+		fogRising: (cricketsAmp: 0.8, fogAmp: 0.8, droneAmp: 0.4,  leavesAmp: 0.2, spiritsAmp: 0.4, whispersAmp: 0.3, creakAmp: 0.0, owlsAmp: 0.5, verb: 0.2,  tempo: 0.9),
+		deepFog:   (cricketsAmp: 0.5, fogAmp: 1.0, droneAmp: 0.9,  leavesAmp: 0.0, spiritsAmp: 0.8, whispersAmp: 0.7, creakAmp: 0.0, owlsAmp: 0.3, verb: 0.3,  tempo: 0.8),
+		leafWind:  (cricketsAmp: 0.9, fogAmp: 0.1, droneAmp: 0.15, leavesAmp: 1.0, spiritsAmp: 0.0, whispersAmp: 0.0, creakAmp: 0.6, owlsAmp: 0.6, verb: 0.12, tempo: 1.0),
+		creaking:  (cricketsAmp: 0.7, fogAmp: 0.3, droneAmp: 0.5,  leavesAmp: 0.5, spiritsAmp: 0.3, whispersAmp: 0.5, creakAmp: 1.0, owlsAmp: 0.2, verb: 0.18, tempo: 0.95)
 	);
 	// Which scenes can follow which, so the night drifts instead of jumping.
 	next = (
