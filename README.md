@@ -7,7 +7,7 @@ A small web page on the Pi lets you change scenes, set
 levels and schedule the nightly fade in and out from your phone.
 
 ```
-sc/halloween.scd     the sound: crickets, fog, drone, cornfield, spirits, creeper, owls
+sc/halloween.scd     the sound: crickets, fog, drone, leaves, spirits, creaks, owls
 sc/main.scd          Pi entry point: loads the patch, listens for OSC, writes status
 tools/               name-usb-cards.sh: fixed names for USB sound cards
 web/server.py        control page and its API (Python standard library only)
@@ -80,13 +80,13 @@ ambB right = the tree.
 Each output has a role, set by `AMBIENT_SPEAKERS` in `/etc/default/ambient`,
 listed in output order:
 
-- `ground`: on the ground. Crickets, fog, drone, cornfield and the creeper.
-  List them in walking order round the yard; the creeper and the fog move
+- `ground`: on the ground. Crickets, fog, drone, leaves and creaks.
+  List them in walking order round the yard; the fog and the gusts move
   from one to the next.
 - `birds`: up a tree. Any owl calls here.
 - `owlA`, `owlB`, ...: up a tree, and only that owl calls here.
 
-Elevated speakers also get leaves stirring, a little fog and passing spirits.
+Elevated speakers also get leaves, creaking branches, a little fog and spirits.
 
 ```
 AMBIENT_SPEAKERS="ground ground ground birds"   # 3 on the ground, 1 tree (default)

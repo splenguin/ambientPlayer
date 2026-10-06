@@ -1,9 +1,9 @@
 // Halloween night: restrained, slow-moving ambience for ground speakers
 // around the yard plus elevated speakers up in the trees.
 //
-//   Crickets (the anchor), rolling fog, a low one-pitch drone, cornfield
-//   rustle, faint drifting spirits, and something creeping between the
-//   ground speakers. The crickets near it fall silent while it's close.
+//   Crickets (the anchor), rolling fog, a deep textured rumble under the
+//   ground, dry leaves rubbing in the wind, spirits drifting between the
+//   speakers, and old wood creaking as the trees sway.
 //   Owls, from your recordings in ambientSounds/owls, call only from the
 //   elevated speakers. Files are grouped into owls by name prefix (owlA_01.wav,
 //   owlA_02.wav... are owl "owlA"), and each elevated speaker can be given
@@ -15,18 +15,18 @@
 // While it runs:
 //   ~scene.(\deepFog);        jump to a scene (normal slow fade)
 //   ~scene.(\clear, 5);       ...with a 5 second fade instead
-//   ~solo.(\drone);           hear one layer alone (\crickets \fog \drone \corn \spirits \creeper \owls)
+//   ~solo.(\drone);           hear one layer alone (\crickets \fog \drone \leaves \spirits \creak \owls)
 //   ~birds.(false);           turn the birds off (true to bring them back)
 //   ~auto.();                 resume automatic scene changes after ~scene/~solo
 //   ~trim.(\fog, 0.5);        turn one layer down (or up, max 2) in every scene
 //
 // ~speakers gives each output a role, in output order:
-//   "ground"   on the ground: crickets, fog, drone, cornfield, creeper. Number
-//              them in walking order round the yard; the creeper and the
-//              fog move from one to the next.
+//   "ground"   on the ground: crickets, fog, drone, leaves, creaks. Number
+//              them in walking order round the yard; the fog and the gusts
+//              move from one to the next.
 //   "birds"    elevated, any owl calls here
 //   "owlA" ... elevated, only that owl (matches the file prefix, any case)
-// Elevated speakers also get leaves stirring, a little fog and passing spirits.
+// Elevated speakers also get leaves, creaking branches, a little fog and spirits.
 // Example for 2 ground + 2 tree speakers: ["ground", "ground", "owlA", "owlB"]
 
 (
@@ -54,7 +54,7 @@ s.waitForBoot {
 	var ground = max(groundOuts.size, 1), n = ground + upOuts.size;
 	var upRoles = upOuts.collect { |o| roles[o].toLower };
 	var root = 73.42;                            // D2: the one pitch everything leans on
-	var layers = [\crickets, \fog, \drone, \corn, \spirits, \creeper, \owls];
+	var layers = [\crickets, \fog, \drone, \leaves, \spirits, \creak, \owls];
 	var loadFolder = { |name|
 		var exts = ["wav", "aif", "aiff", "flac", "ogg"];
 		var paths = (~soundsDir +/+ name +/+ "*").pathMatch
@@ -68,20 +68,25 @@ s.waitForBoot {
 	var owlChans = { |voice|                     // patch channels this owl may use
 		upRoles.collect { |r, k| if(r == "birds" or: { r == voice.toLower }) { ground + k } }.reject(_.isNil)
 	};
-	var presence = Bus.control(s, ground);       // where the creeper is, 0..1 per ground speaker
 	var levels = IdentityDictionary.new;         // current scene levels, read by the event layers
 	var scenes, next, applyScene;
 
-	// Something stepping through leaves, panned between two ground speakers.
-	SynthDef(\step, { |out = 0, chan = 0, frac = 0, amp = 0.5, snap = 0|
-		var thud = LPF.ar(BrownNoise.ar, Rand(120, 260)) * EnvGen.ar(Env.perc(0.005, Rand(0.06, 0.12)));
-		var crunch = BPF.ar(WhiteNoise.ar * Decay.ar(Dust.ar(Rand(150, 400)), 0.004), Rand(1800, 4000), 0.9)
-			* EnvGen.ar(Env.perc(0.01, Rand(0.12, 0.3)));
-		var twig = Ringz.ar(Impulse.ar(0), [Rand(1800, 2400), Rand(3000, 3800)], 0.03).sum * snap * 0.15;
-		var sig = LPF.ar((thud * 0.6) + crunch + twig, 3500) * amp;
-		Line.kr(0, 0, 0.5, doneAction: 2);
-		Out.ar(out + chan, sig * (1 - frac).sqrt);
-		Out.ar(out + chan + 1, sig * frac.sqrt);
+	// Old wood under strain: a limb or a post creaking as it sways. Stick-slip
+	// friction (an uneven train of tiny slips that speeds up as the strain
+	// builds) rings a hollow wooden body, sometimes panned between two speakers.
+	SynthDef(\creak, { |out = 0, chan = 0, to = 0, len = 2, amp = 0.3, rate0 = 12, rate1 = 40, body = 1|
+		var env = EnvGen.ar(Env([0, 1, 0.8, 0], [0.25, 0.55, 0.2] * len, [2, 0, -2]), doneAction: 2);
+		var rate = EnvGen.kr(Env([rate0, rate1, rate0 * 1.3], [0.6, 0.4] * len, \sin))
+			* LFNoise2.kr(6).range(0.8, 1.25);
+		var slips = Impulse.ar(rate) * LFNoise1.ar(rate * 0.5).range(0.3, 1)
+			+ (Dust.ar(rate * 0.4) * 0.5);
+		var grit = BPF.ar(PinkNoise.ar, 1800, 1) * Decay.ar(slips, 0.004) * 0.3;
+		var wood = Klank.ar(`[[180, 410, 655, 1130, 1720] * body, [1, 0.7, 0.45, 0.3, 0.15], [0.08, 0.06, 0.05, 0.03, 0.02]],
+			Decay.ar(slips, 0.001) * 0.04);
+		var sig = LPF.ar(HPF.ar(wood + grit, 120), 3000) * env * amp;
+		var pos = Line.kr(0, 1, len), same = (chan - to).abs < 0.5;
+		Out.ar(out + chan, sig * Select.kr(same, [(1 - pos).sqrt, 1]));
+		Out.ar(out + to, sig * pos.sqrt * (1 - same));
 	}).add;
 
 	// A spirit: breathy whispered vowels that swell and drift from one speaker
@@ -121,10 +126,9 @@ s.waitForBoot {
 	s.sync;
 
 	// Crickets: the anchor, three per ground speaker. They slow down as the
-	// scene gets colder (\tempo) and go quiet near the creeper.
+	// scene gets colder (\tempo).
 	Ndef(\crickets, {
 		var tempo = Lag.kr(\tempo.kr(1), 90);
-		var duck = (1 - Lag.kr(In.kr(presence.index, ground), 4)).asArray;
 		var outs = Array.fill(n, { DC.ar(0) });
 		(ground * 3).do { |i|
 			var ch = i % ground;
@@ -135,7 +139,7 @@ s.waitForBoot {
 			var pulse = Lag.ar(LFPulse.ar(pulseRate, 0, 0.45), 0.003);
 			var active = LFNoise1.kr(Rand(0.01, 0.04)).range(-0.3, 1).clip(0, 1).lag(2);
 			var sig = SinOsc.ar(freq * (1 + (LFNoise2.kr(8) * 0.004))) + (SinOsc.ar(freq * 2) * 0.08);
-			outs[ch] = outs[ch] + (sig * pulse * Lag.ar(gate, 0.004) * active * duck[ch] * Rand(0.02, 0.05));
+			outs[ch] = outs[ch] + (sig * pulse * Lag.ar(gate, 0.004) * active * Rand(0.02, 0.05));
 		};
 		outs
 	});
@@ -152,85 +156,85 @@ s.waitForBoot {
 		})
 	});
 
-	// Drone: one low pitch, a slowly shifting "vowel" that makes it groan,
-	// and a faint bowed-metal shimmer. Each ground speaker is detuned a hair,
-	// so the drone beats slowly across the yard. Nothing from the trees.
+	// Drone: a deep, rough rumble, as if something huge is shifting
+	// underground. Resonant low noise that wanders between about 40 and 90 Hz,
+	// a sub-octave of D that never quite settles, and a slow grinding grain
+	// on top, driven gently into saturation so small speakers still carry it.
+	// Each ground speaker gets its own; nothing from the trees.
 	Ndef(\drone, {
 		var voice = {
-			var f = root + Rand(-0.12, 0.12);
-			var src = Saw.ar(f * [1, 1.0025, 0.9975]).sum * 0.3;
-			var body = RLPF.ar(src, LFNoise2.kr(Rand(0.01, 0.03)).exprange(140, 600), 0.3);
-			var vowel = BPF.ar(src, LFNoise2.kr(0.02).exprange(250, 650), 0.2) * 1.5;
-			var metal = Klank.ar(`[f * [2.76, 5.40, 8.93, 13.34], [1, 0.6, 0.4, 0.25], [4, 3, 2.5, 2]],
-				PinkNoise.ar * 0.001);
-			var breathe = LFNoise2.kr(Rand(0.02, 0.05)).range(0.4, 1);
-			(body + vowel + (metal * 0.5)) * breathe * 0.15
+			var src = BrownNoise.ar;
+			var throat = RLPF.ar(src, LFNoise2.kr(Rand(0.02, 0.05)).exprange(40, 90), 0.12) * 0.5;
+			var sub = SinOsc.ar(root * 0.5 * LFNoise2.kr(0.07).range(0.985, 1.015))
+				* LFNoise2.kr(Rand(0.05, 0.1)).range(0.2, 0.7);
+			var grind = BPF.ar(src, LFNoise2.kr(0.04).exprange(90, 220), 0.5)
+				* LFNoise1.ar(LFNoise2.kr(0.1).range(6, 18)).range(0.1, 1).squared * 1.5;
+			var sig = (throat + sub + grind) * 1.6;
+			sig = LPF.ar((sig.tanh * 0.8) + (sig * 0.2), 450);
+			HPF.ar(sig, 30) * LFNoise2.kr(Rand(0.015, 0.04)).range(0.35, 1) * 0.06
 		};
 		Array.fill(n, { |i| if(i >= ground) { Silent.ar } { voice.value } })
 	});
 
-	// Cornfield: dry papery rustle in gusts that sweep across the ground
-	// speakers, the odd creak of a stalk, and leaves stirring in the tree.
-	Ndef(\corn, {
-		var gust = LFNoise2.kr(0.05).range(0, 1).squared;
+	// Leaves: dry, leathery leaves rubbing against each other. No clicks, just
+	// friction: each speaker has a few clusters whose rubbing comes and goes
+	// with the gusts that sweep across the yard, rougher and brighter when
+	// they move faster. The tree speakers get a softer share.
+	Ndef(\leaves, {
+		var gust = LFNoise2.kr(0.04).range(0.25, 1).squared;
 		Array.fill(n, { |i|
-			var g = DelayN.kr(gust, 10, if(i >= ground, 4, i * 3) + Rand(0, 1));
-			var dens = g.linexp(0, 1, 3, if(i >= ground, 80, 300));
-			var dry = BPF.ar(WhiteNoise.ar * Decay2.ar(Dust.ar(dens), 0.0005, Rand(0.01, 0.03)),
-				LFNoise1.kr(0.5).exprange(2000, 6000), 1.2);
-			var flap = BPF.ar(PinkNoise.ar * Decay2.ar(Dust.ar(dens * 0.2), 0.002, 0.06), Rand(700, 1200), 0.8);
-			var hiss = HPF.ar(PinkNoise.ar, 3000) * 0.03;
-			var ctrig = Dust.kr(if(i >= ground, 0, 0.01));
-			var clen = Rand(0.6, 1.8);
-			var cenv = EnvGen.kr(Env.sine(clen), ctrig);
-			var crate = EnvGen.kr(Env([Rand(15, 25), Rand(35, 60)], [clen]), ctrig);
-			var creak = Ringz.ar(Impulse.ar(crate) * cenv,
-				[Rand(350, 450), Rand(900, 1100), Rand(1700, 2000)], [0.03, 0.02, 0.015]).sum * 0.04;
-			(((dry * 0.6) + (flap * 0.4) + hiss) * g * if(i >= ground, 0.5, 1)) + creak
+			var up = i >= ground;
+			var g = DelayN.kr(gust, 10, if(up, 4, i * 3) + Rand(0, 1));
+			var sig = Array.fill(3, {
+				var speed = (LFNoise2.kr(Rand(0.4, 1.4)).abs * g * Rand(0.6, 1.2)).lag(0.15);
+				var grains = Decay2.ar(Dust.ar(speed.linexp(0, 1.2, 40, 1500)), 0.004, 0.025);
+				var scrape = BPF.ar(PinkNoise.ar * grains, Rand(700, 1500) * (1 + speed), 1.4);
+				var rub = BPF.ar(PinkNoise.ar, Rand(500, 1100) * (1 + speed), 2.5) * speed;
+				((scrape * 1.4) + (rub * 0.5)) * speed
+			}).sum;
+			LPF.ar(sig, 4500) * if(up, 0.45, 0.9)
 		})
 	});
 
-	// Spirits: every half minute to two minutes, if the scene allows it, one
-	// passes between two speakers (sometimes down from the tree).
+	// Spirits: a slow, continuous procession. A new one rises every few
+	// seconds and each lingers for a quarter to half a minute, so two or three
+	// always overlap, drifting between speakers (sometimes down from the tree).
 	Ndef(\spirits).ar(n);
 	Ndef(\spirits, Pspawner({ |sp|
 		var vowels = [[300, 870, 2240], [730, 1090, 2440], [570, 840, 2410], [440, 1020, 2240], [270, 2290, 3010]];
-		sp.wait(rrand(10, 30));
+		sp.wait(rrand(2, 6));
 		loop {
 			if((levels[\spiritsAmp] ? 0) > 0.1) {
-				var from = n.rand, to = (from + rrand(1, n - 1)) % n;
+				var from = n.rand, to = (from + rrand(1, max(n - 1, 1))) % n;
 				var a = vowels.choose, b = vowels.choose;
-				sp.seq(Pbind(\instrument, \wraith, \from, from, \to, to,
-					\len, rrand(7.0, 14.0), \amp, rrand(0.25, 0.45), \pitch, root * [2, 3, 4].choose,
+				sp.par(Pbind(\instrument, \wraith, \from, from, \to, to,
+					\len, rrand(15.0, 30.0), \amp, rrand(0.15, 0.3), \pitch, root * [2, 3, 4].choose,
 					\f1a, a[0], \f2a, a[1], \f3a, a[2], \f1b, b[0], \f2b, b[1], \f3b, b[2],
 					\dur, Pseq([0.1])));
-				sp.wait(rrand(30, 120));
-			} { sp.wait(10) };
+				sp.wait(rrand(5.0, 14.0));
+			} { sp.wait(5) };
 		}
 	}));
 
-	// The creeper: moves between ground speakers in short bursts of steps,
-	// freezes, moves again, then leaves. Crickets near it go quiet.
-	Ndef(\creeper).ar(n);
-	Ndef(\creeper, Pspawner({ |sp|
+	// Creaks: somewhere an old limb or post creaks as the wind pushes it, a
+	// few groans in a row as it sways back and forth, then quiet for a while.
+	// Mostly from the trees when there are tree speakers.
+	Ndef(\creak).ar(n);
+	Ndef(\creak, Pspawner({ |sp|
 		sp.wait(rrand(10, 30));
 		loop {
-			if((levels[\creeperAmp] ? 0) > 0.1 and: { ground >= 2 }) {
-				var pos = rrand(0.0, ground - 1.0), dir = [-1, 1].choose;
-				rrand(6, 16).do {
-					var ch = pos.floor.min(ground - 2).asInteger, frac = pos - ch;
-					var near = Array.fill(ground, 0);
-					near[ch] = 1 - frac; near[ch + 1] = frac;
-					presence.setn(near);
-					sp.seq(Pbind(\instrument, \step, \chan, ch, \frac, frac,
-						\dur, Pwhite(0.2, 0.7, rrand(2, 6)),
-						\amp, Pwhite(0.15, 0.35), \snap, Pwrand([0, 1], [0.9, 0.1], inf)));
-					pos = pos + (dir * rrand(0.1, 0.35));
-					if(pos <= 0 or: { pos >= (ground - 1) }) { dir = dir.neg; pos = pos.clip(0, ground - 1) };
-					sp.wait(rrand(1.5, 8.0));   // frozen, listening
+			if((levels[\creakAmp] ? 0) > 0.1) {
+				var chan = if(n > ground and: { 0.6.coin }) { rrand(ground, n - 1) } { ground.rand };
+				var to = if(0.3.coin) { (chan + 1) % n } { chan };
+				var body = rrand(0.6, 1.5), r0 = rrand(6.0, 14.0);
+				rrand(2, 5).do {
+					var len = rrand(1.2, 3.5);
+					sp.seq(Pbind(\instrument, \creak, \chan, chan, \to, to, \len, len,
+						\body, body * rrand(0.97, 1.03), \rate0, r0 * rrand(0.8, 1.2), \rate1, r0 * rrand(2.5, 5),
+						\amp, rrand(0.3, 0.6), \dur, Pseq([len])));
+					sp.wait(rrand(0.8, 4.0));   // swaying back
 				};
-				presence.setn(0 ! ground);
-				sp.wait(rrand(40, 150));
+				sp.wait(rrand(30, 120));
 			} { sp.wait(10) };
 		}
 	}));
@@ -302,19 +306,19 @@ s.waitForBoot {
 
 	// Scenes: target levels for each layer, plus reverb and cricket tempo.
 	scenes = (
-		clear:     (cricketsAmp: 1.0, fogAmp: 0.0, droneAmp: 0.0,  cornAmp: 0.3, spiritsAmp: 0.0, creeperAmp: 0.2, owlsAmp: 0.8, verb: 0.12, tempo: 1.0),
-		fogRising: (cricketsAmp: 0.8, fogAmp: 0.8, droneAmp: 0.4,  cornAmp: 0.2, spiritsAmp: 0.2, creeperAmp: 0.0, owlsAmp: 0.5, verb: 0.2,  tempo: 0.9),
-		deepFog:   (cricketsAmp: 0.5, fogAmp: 1.0, droneAmp: 0.9,  cornAmp: 0.0, spiritsAmp: 0.8, creeperAmp: 0.0, owlsAmp: 0.3, verb: 0.3,  tempo: 0.8),
-		cornWind:  (cricketsAmp: 0.9, fogAmp: 0.1, droneAmp: 0.15, cornAmp: 1.0, spiritsAmp: 0.0, creeperAmp: 0.4, owlsAmp: 0.6, verb: 0.12, tempo: 1.0),
-		stalked:   (cricketsAmp: 0.7, fogAmp: 0.3, droneAmp: 0.5,  cornAmp: 0.5, spiritsAmp: 0.1, creeperAmp: 1.0, owlsAmp: 0.2, verb: 0.18, tempo: 0.95)
+		clear:     (cricketsAmp: 1.0, fogAmp: 0.0, droneAmp: 0.0,  leavesAmp: 0.3, spiritsAmp: 0.0, creakAmp: 0.2, owlsAmp: 0.8, verb: 0.12, tempo: 1.0),
+		fogRising: (cricketsAmp: 0.8, fogAmp: 0.8, droneAmp: 0.4,  leavesAmp: 0.2, spiritsAmp: 0.4, creakAmp: 0.0, owlsAmp: 0.5, verb: 0.2,  tempo: 0.9),
+		deepFog:   (cricketsAmp: 0.5, fogAmp: 1.0, droneAmp: 0.9,  leavesAmp: 0.0, spiritsAmp: 0.8, creakAmp: 0.0, owlsAmp: 0.3, verb: 0.3,  tempo: 0.8),
+		leafWind:  (cricketsAmp: 0.9, fogAmp: 0.1, droneAmp: 0.15, leavesAmp: 1.0, spiritsAmp: 0.0, creakAmp: 0.6, owlsAmp: 0.6, verb: 0.12, tempo: 1.0),
+		creaking:  (cricketsAmp: 0.7, fogAmp: 0.3, droneAmp: 0.5,  leavesAmp: 0.5, spiritsAmp: 0.3, creakAmp: 1.0, owlsAmp: 0.2, verb: 0.18, tempo: 0.95)
 	);
 	// Which scenes can follow which, so the night drifts instead of jumping.
 	next = (
-		clear: [\fogRising, \cornWind, \stalked],
-		fogRising: [\deepFog, \clear, \stalked],
-		deepFog: [\fogRising, \stalked],
-		cornWind: [\clear, \stalked, \fogRising],
-		stalked: [\cornWind, \fogRising, \clear]
+		clear: [\fogRising, \leafWind, \creaking],
+		fogRising: [\deepFog, \clear, \creaking],
+		deepFog: [\fogRising, \creaking],
+		leafWind: [\clear, \creaking, \fogRising],
+		creaking: [\leafWind, \fogRising, \clear]
 	);
 
 	applyScene = { |name, fade|
