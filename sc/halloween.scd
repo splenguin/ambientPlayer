@@ -104,29 +104,25 @@ s.waitForBoot {
 		Out.ar(out + to, sig * glide.sqrt);
 	}).add;
 
-	// A whispered phrase: no words, just the shapes of them. Breath through
-	// shifting vowel formants a few syllables a second, with hissed consonants
-	// in front of some syllables, sometimes drifting from one speaker to
-	// another. \size shifts the formants (a smaller or larger whisperer),
-	// \far makes it quieter and duller.
-	SynthDef(\whisper, { |out = 0, chan = 0, to = 0, len = 2, amp = 0.2, rate = 5, size = 1, far = 0|
-		var env = EnvGen.ar(Env([0, 1, 1, 0], [0.15, max(len - 0.4, 0.1), 0.25], \sin), doneAction: 2);
-		var trig = Impulse.kr(rate * LFNoise1.kr(3).range(0.6, 1.4));
-		var idx = TIRand.kr(0, 7, trig);
-		var f1 = Lag.kr(Select.kr(idx, [400, 800, 650, 520, 330, 720, 600, 560]), 0.04) * size;
-		var f2 = Lag.kr(Select.kr(idx, [900, 1150, 900, 1080, 2250, 1750, 1200, 1400]), 0.04) * size;
-		var f3 = Lag.kr(Select.kr(idx, [2300, 2500, 2450, 2300, 3000, 2450, 2400, 1800]), 0.04) * size;
-		var vtrig = TDelay.kr(trig, 0.04);
-		var venv = EnvGen.ar(Env([0, 1, 0.5, 0], [0.025, 0.06, 0.08], [2, 0, -3]), vtrig)
-			* Latch.kr(LFNoise1.kr(20).range(0.3, 1), vtrig);
-		var fenv = EnvGen.ar(Env.perc(0.01, 0.07), trig) * (TRand.kr(0, 1, trig) < 0.55);
-		var src = (PinkNoise.ar * 0.7) + (WhiteNoise.ar * 0.3);
-		var vowel = BPF.ar(src, [f1, f2, f3], [0.12, 0.09, 0.08], [1, 0.7, 0.35]).sum * 4;
-		var hiss = BPF.ar(WhiteNoise.ar, TExpRand.kr(2500, 7000, trig), 0.6) * fenv * 0.6;
-		var breath = HPF.ar(src, 1500) * 0.04;
-		var sig = ((vowel * venv) + hiss + breath) * env * amp;
+	// A whispered phrase: no words and no pitch, just breath. Broad, fixed
+	// bands of noise (no sweeping filters, so nothing whistles) swell and fade
+	// in soft syllable-sized puffs a few times a second, bunched into clusters
+	// like muttered words. Some puffs lean toward breathy "h", some toward a
+	// hissed "s". Every edge is smooth, so nothing clicks. Sometimes the phrase
+	// drifts from one speaker to another; \far makes it quieter and duller.
+	SynthDef(\whisper, { |out = 0, chan = 0, to = 0, len = 2, amp = 0.2, rate = 5, far = 0, tone = 1|
+		var env = EnvGen.ar(Env([0, 1, 1, 0], [0.3, max(len - 0.7, 0.1), 0.4], \sin), doneAction: 2);
+		var trig = Impulse.ar(rate * LFNoise1.kr(2).range(0.7, 1.3));
+		var gap = TRand.ar(0, 1, trig) < 0.2;                      // a pause between "words"
+		var syl = EnvGen.ar(Env([0, 1, 0], [0.45, 0.55] / rate, \sin), trig * (1 - gap));
+		var peak = Latch.ar(TRand.ar(0.35, 1, trig), trig);
+		var s = Latch.ar(TRand.ar(0, 1, trig), trig).squared;      // how hissy this puff is
+		var noise = (WhiteNoise.ar * 0.5) + (PinkNoise.ar * 0.5);
+		var breath = BPF.ar(noise, 1300 * tone, 1.6);
+		var hiss = BPF.ar(WhiteNoise.ar, 4500 * tone, 1.2) * 0.6;
+		var sig = ((breath * (1 - (s * 0.7))) + (hiss * s)) * syl * peak;
 		var pos = Line.kr(0, 1, len), same = (chan - to).abs < 0.5;
-		sig = HPF.ar(LPF.ar(sig, far.linexp(0, 1, 9000, 2500)), 150) * far.linlin(0, 1, 1, 0.4);
+		sig = HPF.ar(LPF.ar(sig, far.linexp(0, 1, 9000, 3000)), 300) * env * amp * far.linlin(0, 1, 1, 0.45);
 		Out.ar(out + chan, sig * Select.kr(same, [(1 - pos).sqrt, 1]));
 		Out.ar(out + to, sig * pos.sqrt * (1 - same));
 	}).add;
@@ -266,7 +262,7 @@ s.waitForBoot {
 		}
 	}));
 
-	// Whispers: someone unseen mutters a few phrases from one spot, sometimes
+	// Whispers: someone unseen mutters a string of phrases from one spot, sometimes
 	// shifting a little as they go; now and then another answers from
 	// elsewhere. Then silence for a while.
 	Ndef(\whispers).ar(n);
@@ -275,13 +271,13 @@ s.waitForBoot {
 			var len = rrand(1.0, 3.5);
 			var to = if(0.3.coin) { (chan + [-1, 1].choose) % n } { chan };
 			Pbind(\instrument, \whisper, \chan, chan, \to, to, \len, len, \rate, rrand(4.0, 7.0),
-				\size, size * rrand(0.98, 1.02), \far, far, \amp, rrand(0.35, 0.6), \dur, Pseq([len]))
+				\tone, size, \far, far, \amp, rrand(0.35, 0.6), \dur, Pseq([len]))
 		};
 		sp.wait(rrand(5, 20));
 		loop {
 			if((levels[\whispersAmp] ? 0) > 0.1) {
 				var chan = n.rand, size = rrand(0.85, 1.15), far = rrand(0.0, 0.6);
-				rrand(2, 6).do {
+				rrand(4, 10).do {
 					sp.seq(phrase.(chan, size, far));
 					if(0.25.coin and: { n > 1 }) {
 						var other = (chan + rrand(1, n - 1)) % n;
@@ -290,7 +286,7 @@ s.waitForBoot {
 					};
 					sp.wait(rrand(0.3, 1.8));
 				};
-				sp.wait(rrand(10, 50));
+				sp.wait(rrand(6, 25));
 			} { sp.wait(5) };
 		}
 	}));
@@ -360,8 +356,11 @@ s.waitForBoot {
 	// \fade seconds. Then reverb, a limiter, and the fold-down to real outputs.
 	Ndef(\mix, {
 		var fade = \fade.kr(fadeTime);
+		// A layer that ever goes bad (NaN) is silenced here instead of
+		// poisoning the reverb and taking every other layer with it.
+		var clean = { |x| \Sanitize.asClass !? { |c| c.ar(x) } ? x };
 		var sig = layers.collect { |name|
-			Ndef.ar(name, n) * VarLag.kr((name ++ "Amp").asSymbol.kr(0), fade, warp: \sin)
+			clean.(Ndef.ar(name, n)) * VarLag.kr((name ++ "Amp").asSymbol.kr(0), fade, warp: \sin)
 				* Lag.kr((name ++ "Trim").asSymbol.kr(1), 2)
 				* if(name == \owls) { Lag.kr(\birds.kr(1), 4) } { 1 }
 		}.sum;
