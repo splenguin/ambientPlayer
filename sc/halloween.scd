@@ -4,6 +4,8 @@
 //   Crickets (the anchor), rolling fog, a low one-pitch drone, cornfield
 //   rustle, faint drifting spirits, and something creeping between the
 //   ground speakers. The crickets near it fall silent while it's close.
+//   Owls, from your recordings in ambientSounds/owls, call only from the
+//   elevated (tree) speaker.
 //
 // Run: open in the SuperCollider IDE, click inside the outer parentheses,
 // press Ctrl+Enter. Ctrl+. stops everything.
@@ -11,26 +13,40 @@
 // While it runs:
 //   ~scene.(\deepFog);        jump to a scene (normal slow fade)
 //   ~scene.(\clear, 5);       ...with a 5 second fade instead
-//   ~solo.(\drone);           hear one layer alone (\crickets \fog \drone \corn \spirits \creeper)
+//   ~solo.(\drone);           hear one layer alone (\crickets \fog \drone \corn \spirits \creeper \owls)
+//   ~birds.(false);           turn the birds off (true to bring them back)
 //   ~auto.();                 resume automatic scene changes after ~scene/~solo
 //   ~trim.(\fog, 0.5);        turn one layer down (or up, max 2) in every scene
 //
 // Logical speakers: 0, 1, 2 = ground (put them in walking order around the
-// yard, so the creeper and the fog move 0 -> 1 -> 2), 3 = tree.
+// yard, so the creeper and the fog move 0 -> 1 -> 2), 3 = tree. ~elevated
+// picks which real output (1-4) the tree goes to; the ground speakers take the
+// other three in order.
 
 (
 ~outputs = ~outputs ? 2;         // 2 = stereo fold-down for the desk, 4 = the yard
 ~sceneTime = ~sceneTime ? 600;   // average seconds per scene
 ~fadeTime = ~fadeTime ? 150;     // S-curve crossfade between scenes, seconds
+~elevated = ~elevated ? 4;       // output (1-4) of the elevated speaker that gets the birds
+~soundsDir = ~soundsDir ? "~/ambientSounds".standardizePath;  // the ambientSounds checkout
 
 if(s.serverRunning and: { s.options.numOutputBusChannels < ~outputs }) { s.quit };
 s.options.numOutputBusChannels = max(s.options.numOutputBusChannels, ~outputs);
 
 s.waitForBoot {
 	var outputs = ~outputs, sceneTime = ~sceneTime, fadeTime = ~fadeTime;
+	var elevated = (~elevated.asInteger - 1).clip(0, 3);
 	var ground = 3, n = 4, tree = 3;             // logical layout
 	var root = 73.42;                            // D2: the one pitch everything leans on
-	var layers = [\crickets, \fog, \drone, \corn, \spirits, \creeper];
+	var layers = [\crickets, \fog, \drone, \corn, \spirits, \creeper, \owls];
+	var loadFolder = { |name|
+		var exts = ["wav", "aif", "aiff", "flac", "ogg"];
+		var paths = (~soundsDir +/+ name +/+ "*").pathMatch
+			.select { |p| exts.includesEqual(p.splitext[1].asString.toLower) };
+		"halloween: % % recordings in %".format(paths.size, name, ~soundsDir +/+ name).postln;
+		paths.collect { |p| Buffer.readChannel(s, p, channels: [0]) }
+	};
+	var owlCalls = loadFolder.("owls");
 	var presence = Bus.control(s, ground);       // where the creeper is, 0..1 per ground speaker
 	var levels = IdentityDictionary.new;         // current scene levels, read by the event layers
 	var scenes, next, applyScene;
@@ -59,6 +75,17 @@ s.waitForBoot {
 		var sig = HPF.ar(breath + moan, 150) * env * amp;
 		Out.ar(out + from, sig * (1 - glide).sqrt);
 		Out.ar(out + to, sig * glide.sqrt);
+	}).add;
+
+	// A recorded call, played from one speaker. Long recordings get a random
+	// excerpt. Small changes of speed and tone keep repeats from sounding the
+	// same; \far adds distance (quieter, duller).
+	SynthDef(\call, { |out = 0, chan = 0, buf = 0, rate = 1, start = 0, len = 4, amp = 0.5, far = 0|
+		var fade = min(0.08, len * 0.25);
+		var env = EnvGen.ar(Env([0, 1, 1, 0], [fade, len - (2 * fade), fade]), doneAction: 2);
+		var sig = PlayBuf.ar(1, buf, rate * BufRateScale.kr(buf), startPos: start);
+		sig = LPF.ar(sig, far.linexp(0, 1, 12000, 2500)) * far.linlin(0, 1, 1, 0.35);
+		Out.ar(out + chan, HPF.ar(sig, 120) * env * amp);
 	}).add;
 
 	s.sync;
@@ -178,6 +205,35 @@ s.waitForBoot {
 		}
 	}));
 
+	// Owls: one bird calls a few times from the elevated speaker, sometimes
+	// answered by a second, farther-off owl, then the trees go quiet for a few
+	// minutes. Needs recordings in ambientSounds/owls (short clips work best).
+	Ndef(\owls).ar(n);
+	Ndef(\owls, Pspawner({ |sp|
+		var call = { |buf, rate, far|
+			var dur = buf.numFrames / buf.sampleRate / rate;
+			var len = min(dur, rrand(6.0, 12.0));
+			var start = if(dur > len) { rrand(0, (dur - len) * buf.sampleRate * rate) } { 0 };
+			Pbind(\instrument, \call, \chan, tree, \buf, buf, \rate, rate, \start, start,
+				\len, len, \far, far, \amp, rrand(0.15, 0.3), \dur, Pseq([len]))
+		};
+		sp.wait(rrand(15, 45));
+		loop {
+			if(owlCalls.notEmpty and: { (levels[\owlsAmp] ? 0) > 0.1 }) {
+				var buf = owlCalls.choose, rate = rrand(0.97, 1.03), far = rrand(0.0, 0.3);
+				rrand(1, 4).do {
+					sp.seq(call.(buf, rate * rrand(0.99, 1.01), far));
+					if(0.3.coin and: { owlCalls.size > 0 }) {
+						sp.wait(rrand(1.5, 5.0));
+						sp.seq(call.(owlCalls.choose, rrand(0.95, 1.05), rrand(0.6, 0.9)));
+					};
+					sp.wait(rrand(4.0, 15.0));
+				};
+				sp.wait(rrand(60, 300));
+			} { sp.wait(10) };
+		}
+	}));
+
 	// Mixer: each layer's level follows its scene target along an S-curve over
 	// \fade seconds. Then reverb, a limiter, and the fold-down to real outputs.
 	Ndef(\mix, {
@@ -185,11 +241,16 @@ s.waitForBoot {
 		var sig = layers.collect { |name|
 			Ndef.ar(name, n) * VarLag.kr((name ++ "Amp").asSymbol.kr(0), fade, warp: \sin)
 				* Lag.kr((name ++ "Trim").asSymbol.kr(1), 2)
+				* if(name == \owls) { Lag.kr(\birds.kr(1), 4) } { 1 }
 		}.sum;
 		sig = sig + (FreeVerb.ar(sig, 1, 0.9, 0.6) * VarLag.kr(\verb.kr(0.15), fade, warp: \sin));
 		sig = Limiter.ar(LeakDC.ar(sig) * Lag.kr(\master.kr(1), 1), 0.9);
 		if(outputs >= 4) {
-			sig
+			// tree to the elevated output, ground speakers to the others in order
+			var outs = Array.newClear(4);
+			outs[elevated] = sig[tree];
+			(0..3).reject(_ == elevated).do { |o, i| outs[o] = sig[i] };
+			outs
 		} {
 			// desk preview: ground 0 left, 1 centre, 2 right, tree centre
 			[sig[0] + (sig[1] * 0.7) + (sig[3] * 0.6), sig[2] + (sig[1] * 0.7) + (sig[3] * 0.6)] * 0.8
@@ -198,11 +259,11 @@ s.waitForBoot {
 
 	// Scenes: target levels for each layer, plus reverb and cricket tempo.
 	scenes = (
-		clear:     (cricketsAmp: 1.0, fogAmp: 0.0, droneAmp: 0.0,  cornAmp: 0.3, spiritsAmp: 0.0, creeperAmp: 0.2, verb: 0.12, tempo: 1.0),
-		fogRising: (cricketsAmp: 0.8, fogAmp: 0.8, droneAmp: 0.4,  cornAmp: 0.2, spiritsAmp: 0.2, creeperAmp: 0.0, verb: 0.2,  tempo: 0.9),
-		deepFog:   (cricketsAmp: 0.5, fogAmp: 1.0, droneAmp: 0.9,  cornAmp: 0.0, spiritsAmp: 0.8, creeperAmp: 0.0, verb: 0.3,  tempo: 0.8),
-		cornWind:  (cricketsAmp: 0.9, fogAmp: 0.1, droneAmp: 0.15, cornAmp: 1.0, spiritsAmp: 0.0, creeperAmp: 0.4, verb: 0.12, tempo: 1.0),
-		stalked:   (cricketsAmp: 0.7, fogAmp: 0.3, droneAmp: 0.5,  cornAmp: 0.5, spiritsAmp: 0.1, creeperAmp: 1.0, verb: 0.18, tempo: 0.95)
+		clear:     (cricketsAmp: 1.0, fogAmp: 0.0, droneAmp: 0.0,  cornAmp: 0.3, spiritsAmp: 0.0, creeperAmp: 0.2, owlsAmp: 0.8, verb: 0.12, tempo: 1.0),
+		fogRising: (cricketsAmp: 0.8, fogAmp: 0.8, droneAmp: 0.4,  cornAmp: 0.2, spiritsAmp: 0.2, creeperAmp: 0.0, owlsAmp: 0.5, verb: 0.2,  tempo: 0.9),
+		deepFog:   (cricketsAmp: 0.5, fogAmp: 1.0, droneAmp: 0.9,  cornAmp: 0.0, spiritsAmp: 0.8, creeperAmp: 0.0, owlsAmp: 0.3, verb: 0.3,  tempo: 0.8),
+		cornWind:  (cricketsAmp: 0.9, fogAmp: 0.1, droneAmp: 0.15, cornAmp: 1.0, spiritsAmp: 0.0, creeperAmp: 0.4, owlsAmp: 0.6, verb: 0.12, tempo: 1.0),
+		stalked:   (cricketsAmp: 0.7, fogAmp: 0.3, droneAmp: 0.5,  cornAmp: 0.5, spiritsAmp: 0.1, creeperAmp: 1.0, owlsAmp: 0.2, verb: 0.18, tempo: 0.95)
 	);
 	// Which scenes can follow which, so the night drifts instead of jumping.
 	next = (
@@ -227,6 +288,8 @@ s.waitForBoot {
 	~scene = { |name, fade| if(scenes[name].notNil) { Tdef(\scenes).stop; applyScene.(name, fade) } };
 	~auto = { Tdef(\scenes).play };
 	~trim = { |layer, amp| Ndef(\mix).set((layer ++ "Trim").asSymbol, amp.clip(0, 2)) };
+	~birds = { |on| Ndef(\mix).set(\birds, if(on) { 1 } { 0 }) };
+	~owlCount = owlCalls.size;
 	~solo = { |layer, fade = 3|
 		var sc = (verb: 0.15, tempo: 1);
 		layers.do { |l| sc[(l ++ "Amp").asSymbol] = if(l == layer, 1, 0) };

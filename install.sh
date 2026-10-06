@@ -23,6 +23,14 @@ else
   echo "Keeping existing /etc/default/ambient."
 fi
 
+echo "== Sounds"
+SOUNDS_DIR=$(getent passwd "$RUN_USER" | cut -d: -f6)/ambientSounds
+if [ ! -d "$SOUNDS_DIR/.git" ]; then
+  sudo -u "$RUN_USER" git clone https://github.com/splenguin/ambientSounds.git "$SOUNDS_DIR"
+else
+  echo "Keeping existing $SOUNDS_DIR."
+fi
+
 echo "== Services"
 for unit in "$DIR"/systemd/*.service; do
   sed -e "s|@USER@|$RUN_USER|g" -e "s|@DIR@|$DIR|g" "$unit" > "/etc/systemd/system/$(basename "$unit")"

@@ -52,6 +52,15 @@
 </section>
 
 <section>
+  <h2>Speakers</h2>
+  <div class="row"><label style="width:auto"><input type="checkbox" id="birdsOn"> Birds on the elevated speaker <span id="elevatedInfo"></span></label></div>
+  <div class="row" style="color:var(--dim);font-size:14px" id="owlInfo"></div>
+  <h2 style="margin-top:14px">Speaker test</h2>
+  <div style="color:var(--dim);font-size:14px">Each speaker beeps its number, then plays a burst of noise. The ambience pauses while testing.</div>
+  <div class="row" id="testBtns"></div>
+</section>
+
+<section>
   <h2>Schedule</h2>
   <div class="row"><label style="width:auto"><input type="checkbox" id="schOn"> Fade in and out on a nightly schedule</label></div>
   <div class="row"><label>Fade in</label><input type="time" id="schStart"></div>
@@ -93,6 +102,16 @@ function build() {
     solo.onclick = () => cmd('solo', l);
     $('layers').appendChild(row);
   });
+  $('testBtns').innerHTML = '';
+  const tests = [[0, 'Test all']];
+  for (let i = 1; i <= Math.min(sc.outputs || 2, 4); i++) tests.push([i, String(i)]);
+  tests.push([-1, 'Stop']);
+  tests.forEach(([n, text]) => {
+    const b = document.createElement('button');
+    b.textContent = text; b.dataset.test = n;
+    b.onclick = () => cmd('test', n);
+    $('testBtns').appendChild(b);
+  });
   const sch = set.schedule || {};
   $('schOn').checked = !!sch.enabled; $('schStart').value = sch.on || '18:30'; $('schEnd').value = sch.off || '23:30';
   built = (sc.layers || []).length > 0;
@@ -111,6 +130,10 @@ function render() {
       r.value = v; r.nextElementSibling.textContent = (+v).toFixed(2);
     });
   }
+  $('birdsOn').checked = set.birds !== false;
+  $('elevatedInfo').textContent = sc.elevated ? `(speaker ${sc.elevated})` : '';
+  $('owlInfo').textContent = sc.online ? (sc.owls ? `${sc.owls} owl recordings loaded.` : 'No owl recordings found. Add them to ambientSounds/owls, then press Update.') : '';
+  document.querySelectorAll('[data-test]').forEach(b => b.classList.toggle('active', +b.dataset.test === sc.test && sc.test >= 0));
   document.querySelectorAll('[data-scene]').forEach(b => b.classList.toggle('active', b.dataset.scene === sc.scene));
   $('autoBtn').classList.toggle('active', !!sc.auto);
 }
@@ -124,6 +147,7 @@ function refresh() {
 $('playBtn').onclick = () => cmd('start', 10.0);
 $('stopBtn').onclick = () => cmd('stop', 10.0);
 $('autoBtn').onclick = () => cmd('auto');
+$('birdsOn').onchange = e => post('/api/settings', {birds:e.target.checked}).then(refresh);
 $('master').oninput = e => { dragging = true; $('masterVal').textContent = (+e.target.value).toFixed(2); };
 $('master').onchange = e => { dragging = false; post('/api/settings', {master:+e.target.value}); };
 const saveSchedule = () => post('/api/settings', {schedule:{enabled:$('schOn').checked, on:$('schStart').value, off:$('schEnd').value}});

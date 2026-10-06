@@ -7,7 +7,7 @@ A small web page on the Pi lets you change scenes, set
 levels and schedule the nightly fade in and out from your phone.
 
 ```
-sc/halloween.scd     the sound: crickets, fog, drone, cornfield, spirits, creeper
+sc/halloween.scd     the sound: crickets, fog, drone, cornfield, spirits, creeper, owls
 sc/main.scd          Pi entry point: loads the patch, listens for OSC, writes status
 tools/               name-usb-cards.sh: fixed names for USB sound cards
 web/server.py        control page and its API (Python standard library only)
@@ -75,6 +75,24 @@ resampling so the two clocks don't drift apart.
 Outputs: ambA left = ground 1, ambA right = ground 2, ambB left = ground 3,
 ambB right = the tree.
 
+### Owls and the elevated speaker
+
+Owls are played from recordings in the
+[ambientSounds](https://github.com/splenguin/ambientSounds) repo (`owls/`),
+which the installer clones to `~/ambientSounds`. They only ever come from the
+elevated speaker: output 4 by default, or set `AMBIENT_ELEVATED=1..4` in
+`/etc/default/ambient`. The ground speakers take the other three outputs in
+order. **Birds** on the control page turns them on or off.
+
+Add recordings by committing them to ambientSounds; its README covers format
+and licensing. Then press **Update from GitHub**.
+
+### Speaker test
+
+On the control page, under **Speaker test**, each speaker beeps its number,
+then plays a burst of soft noise. **Test all** goes round all of them;
+**1** to **4** repeats one. The ambience pauses until you press **Stop**.
+
 ## Changing the sound
 
 Edit the `.scd` files on your desktop, try them in the SuperCollider IDE, then
@@ -89,7 +107,8 @@ open `~/ambientPlayer` directly. After editing there, run
 ## Controlling it without the page
 
 `sc/main.scd` takes OSC on UDP port 57120: `/scene deepFog`, `/auto`,
-`/solo drone`, `/trim fog 0.5`, `/master 0.6`, `/start 10`, `/stop 10`.
+`/solo drone`, `/trim fog 0.5`, `/master 0.6`, `/start 10`, `/stop 10`,
+`/birds 0`, `/test 2`.
 Any OSC app (TouchOSC, Open Stage Control) can send these.
 
 The web page has no password. Keep it on your home network. For access from

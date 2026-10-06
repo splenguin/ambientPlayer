@@ -10,6 +10,7 @@ Environment:
   AMBIENT_STATUS    status JSON written by sc/main.scd (default /tmp/ambient-status.json)
   AMBIENT_SETTINGS  where settings are saved (default ~/.config/ambient/settings.json)
   AMBIENT_REPO      git checkout to pull for updates (default: the repo this file is in)
+  AMBIENT_SOUNDS    ambientSounds checkout, also pulled on update (default ~/ambientSounds)
   AMBIENT_RESTART   command that restarts SuperCollider after an update
                     (default: sudo systemctl restart ambient-sc.service)
 """
@@ -32,12 +33,14 @@ STATUS_PATH = Path(os.environ.get("AMBIENT_STATUS", "/tmp/ambient-status.json"))
 SETTINGS_PATH = Path(os.environ.get(
     "AMBIENT_SETTINGS", Path.home() / ".config" / "ambient" / "settings.json"))
 REPO = Path(os.environ.get("AMBIENT_REPO", HERE.parent))
+SOUNDS = Path(os.environ.get("AMBIENT_SOUNDS") or Path.home() / "ambientSounds")
 RESTART = shlex.split(os.environ.get(
     "AMBIENT_RESTART", "sudo -n systemctl restart ambient-sc.service"))
 SC_ADDR = ("127.0.0.1", 57120)
 
 DEFAULT_SETTINGS = {
     "master": 0.8,
+    "birds": True,
     "trims": {},
     "schedule": {"enabled": False, "on": "18:30", "off": "23:30"},
 }
@@ -108,6 +111,7 @@ def read_status():
 def push_settings():
     """Send saved master and trims to SuperCollider (after it (re)starts)."""
     send_osc("/master", float(settings["master"]))
+    send_osc("/birds", int(bool(settings["birds"])))
     for layer, amp in settings["trims"].items():
         send_osc("/trim", layer, float(amp))
 
@@ -140,12 +144,21 @@ def background():
 
 
 def git_update():
-    out = subprocess.run(["git", "-C", str(REPO), "pull", "--ff-only"],
-                         capture_output=True, text=True, timeout=120)
-    log = (out.stdout + out.stderr).strip()
-    if out.returncode != 0:
-        return False, log
-    if "Already up to date" in log:
+    """Pull the software and the sounds; restart SuperCollider if either changed."""
+    log, changed = [], False
+    for name, repo in (("ambientPlayer", REPO), ("ambientSounds", SOUNDS)):
+        if not (repo / ".git").exists() and name == "ambientSounds":
+            log.append(f"{name}: not found at {repo}, skipped")
+            continue
+        out = subprocess.run(["git", "-C", str(repo), "pull", "--ff-only"],
+                             capture_output=True, text=True, timeout=300)
+        text = (out.stdout + out.stderr).strip()
+        log.append(f"{name}: {text}")
+        if out.returncode != 0:
+            return False, "\n".join(log)
+        changed = changed or "Already up to date" not in text
+    log = "\n".join(log)
+    if not changed:
         return True, log
     r = subprocess.run(RESTART, capture_output=True, text=True, timeout=60)
     log += "\n" + (r.stdout + r.stderr).strip()
@@ -185,7 +198,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path == "/api/cmd":
             cmd, args = req.get("cmd"), req.get("args", [])
-            allowed = {"scene", "auto", "solo", "start", "stop"}
+            allowed = {"scene", "auto", "solo", "start", "stop", "test"}
             if cmd not in allowed or not isinstance(args, list):
                 return self._send(400, {"error": "unknown command"})
             send_osc("/" + cmd, *args)
@@ -196,6 +209,9 @@ class Handler(BaseHTTPRequestHandler):
                 if "master" in req:
                     settings["master"] = min(max(float(req["master"]), 0.0), 1.0)
                     send_osc("/master", settings["master"])
+                if "birds" in req:
+                    settings["birds"] = bool(req["birds"])
+                    send_osc("/birds", int(settings["birds"]))
                 if "trim" in req:
                     layer, amp = str(req["trim"][0]), min(max(float(req["trim"][1]), 0.0), 2.0)
                     settings["trims"][layer] = amp

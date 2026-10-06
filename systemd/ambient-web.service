@@ -5,6 +5,7 @@ Wants=network-online.target
 
 [Service]
 User=@USER@
+EnvironmentFile=-/etc/default/ambient
 Environment=AMBIENT_PORT=80
 Environment=AMBIENT_STATUS=/run/ambient/status.json
 AmbientCapabilities=CAP_NET_BIND_SERVICE
