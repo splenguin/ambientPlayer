@@ -10,7 +10,8 @@
 //   /stop [fade]           fade the sound out (the patch keeps running silently)
 //
 // Every 2 s it writes its state as JSON to $AMBIENT_STATUS for the web page.
-// Environment: AMBIENT_OUTPUTS (default 4), AMBIENT_STATUS (default /tmp/ambient-status.json).
+// Environment: AMBIENT_OUTPUTS (default 4), AMBIENT_STATUS (default /tmp/ambient-status.json),
+// AMBIENT_DEVICE2 (set when a second stereo card provides outputs 3 and 4).
 
 (
 var dir = thisProcess.nowExecutingPath.dirname;
@@ -19,8 +20,14 @@ var bootTime = Date.getDate.rawSeconds.asInteger;
 var playing = true, master = 1.0, trims = IdentityDictionary.new;
 var sym = { |x| x.asString.asSymbol };
 var num = { |x, default| if(x.isNil) { default } { x.asFloat } };
+var device2 = "AMBIENT_DEVICE2".getenv ? "";
 
 ~outputs = ("AMBIENT_OUTPUTS".getenv ? "4").asInteger;
+// With a second card (bridged into JACK as "card2"), outputs 3 and 4 go there.
+if(device2.size > 0) {
+	"SC_JACK_DEFAULT_OUTPUTS".setenv(
+		"system:playback_1,system:playback_2,card2:playback_1,card2:playback_2");
+};
 ~currentScene = nil;
 (dir +/+ "halloween.scd").load;
 

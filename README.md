@@ -9,9 +9,10 @@ levels and schedule the nightly fade in and out from your phone.
 ```
 sc/halloween.scd     the sound: crickets, fog, drone, cornfield, spirits, creeper
 sc/main.scd          Pi entry point: loads the patch, listens for OSC, writes status
+tools/               name-usb-cards.sh: fixed names for USB sound cards
 web/server.py        control page and its API (Python standard library only)
 web/index.html       the page itself
-systemd/*.service    jackd, sclang and the web page, started at boot
+systemd/*.service    jackd, second-card bridge, sclang and the web page, started at boot
 config.env.example   copied to /etc/default/ambient by the installer
 install.sh           sets everything up
 ```
@@ -50,6 +51,29 @@ AMBIENT_CHANNELS=8
 AMBIENT_OUTPUTS=4
 ```
 Then run `sudo systemctl restart ambient-jack`. SuperCollider restarts with it.
+
+### Two USB dongles instead of the board
+
+Two cheap stereo USB dongles give the 4 outputs until the board exists. JACK
+runs the first one, and `zita-j2a` adds the second as outputs 3 and 4,
+resampling so the two clocks don't drift apart.
+
+1. Plug both dongles into the USB ports you'll keep them in, then pin their
+   names to those ports. Otherwise identical dongles can swap after a reboot.
+   ```
+   sudo ~/ambientPlayer/tools/name-usb-cards.sh
+   ```
+2. In `/etc/default/ambient`, set:
+   ```
+   AMBIENT_DEVICE=hw:ambA
+   AMBIENT_CHANNELS=2
+   AMBIENT_DEVICE2=hw:ambB
+   AMBIENT_OUTPUTS=4
+   ```
+3. Run `sudo reboot`.
+
+Outputs: ambA left = ground 1, ambA right = ground 2, ambB left = ground 3,
+ambB right = the tree.
 
 ## Changing the sound
 

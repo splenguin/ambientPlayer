@@ -1,0 +1,21 @@
+[Unit]
+Description=Ambient player: second sound card (outputs 3 and 4)
+BindsTo=ambient-jack.service
+After=ambient-jack.service
+Before=ambient-sc.service
+
+[Service]
+User=@USER@
+EnvironmentFile=/etc/default/ambient
+# Skipped (not failed) when no second card is configured.
+ExecCondition=/bin/sh -c 'test -n "$AMBIENT_DEVICE2"'
+ExecStartPre=/bin/sleep 1
+# zita-j2a resamples, so the two cards' clocks don't need to match.
+ExecStart=/usr/bin/zita-j2a -j card2 -d ${AMBIENT_DEVICE2} -c 2 -r 48000 -p 256 -n 3
+LimitRTPRIO=95
+LimitMEMLOCK=infinity
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,7 +1,8 @@
 [Unit]
 Description=Ambient player: SuperCollider patch
 BindsTo=ambient-jack.service
-After=ambient-jack.service
+Wants=ambient-bridge.service
+After=ambient-jack.service ambient-bridge.service
 
 [Service]
 User=@USER@
