@@ -1,0 +1,16 @@
+[Unit]
+Description=Ambient player: web control page
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=@USER@
+Environment=AMBIENT_PORT=80
+Environment=AMBIENT_STATUS=/run/ambient/status.json
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/usr/bin/python3 @DIR@/web/server.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

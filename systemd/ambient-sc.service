@@ -1,0 +1,22 @@
+[Unit]
+Description=Ambient player: SuperCollider patch
+BindsTo=ambient-jack.service
+After=ambient-jack.service
+
+[Service]
+User=@USER@
+EnvironmentFile=/etc/default/ambient
+Environment=QT_QPA_PLATFORM=offscreen
+Environment=SC_JACK_DEFAULT_OUTPUTS=system
+Environment=AMBIENT_STATUS=/run/ambient/status.json
+RuntimeDirectory=ambient
+LimitRTPRIO=95
+LimitMEMLOCK=infinity
+# give JACK a moment to open the card
+ExecStartPre=/bin/sleep 2
+ExecStart=/usr/bin/sclang -D @DIR@/sc/main.scd
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,16 @@
+[Unit]
+Description=Ambient player: JACK audio server
+After=sound.target
+
+[Service]
+User=@USER@
+EnvironmentFile=/etc/default/ambient
+Environment=JACK_NO_AUDIO_RESERVATION=1
+LimitRTPRIO=95
+LimitMEMLOCK=infinity
+ExecStart=/usr/bin/jackd -R -d alsa -P ${AMBIENT_DEVICE} -o ${AMBIENT_CHANNELS} -r 48000 -p ${AMBIENT_PERIOD} -n 3
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

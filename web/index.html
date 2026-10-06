@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ambient Player</title>
+<style>
+  :root { --bg:#0e0f12; --card:#181a1f; --line:#2a2d35; --text:#e6e6e6; --dim:#8a8f99; --accent:#d9822b; --ok:#5fb36b; --bad:#d9534f; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--text); font:16px/1.4 system-ui, sans-serif; max-width:560px; margin-inline:auto; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:0 0 10px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin:12px 0; }
+  #status { color:var(--dim); font-size:14px; }
+  #status b { color:var(--text); font-weight:600; }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--bad); margin-right:6px; }
+  .dot.on { background:var(--ok); }
+  button { background:#23262d; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:10px 12px; font:inherit; cursor:pointer; }
+  button.active { border-color:var(--accent); color:var(--accent); }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#111; font-weight:600; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:8px; }
+  .row { display:flex; align-items:center; gap:10px; margin:8px 0; }
+  .row label { width:80px; flex:none; }
+  .row input[type=range] { flex:1; min-width:0; accent-color:var(--accent); }
+  .row .val { width:40px; text-align:right; color:var(--dim); font-variant-numeric:tabular-nums; }
+  input[type=time] { background:#23262d; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px; font:inherit; }
+  pre { white-space:pre-wrap; font-size:12px; color:var(--dim); margin:10px 0 0; }
+</style>
+</head>
+<body>
+<h1>Ambient Player</h1>
+<div id="status"><span class="dot" id="dot"></span><span id="statusText">connecting…</span></div>
+
+<section>
+  <h2>Sound</h2>
+  <div class="row">
+    <button id="playBtn" class="primary">Fade in</button>
+    <button id="stopBtn">Fade out</button>
+  </div>
+  <div class="row"><label>Volume</label><input type="range" id="master" min="0" max="1" step="0.01"><span class="val" id="masterVal"></span></div>
+</section>
+
+<section>
+  <h2>Scene</h2>
+  <div class="grid" id="scenes"></div>
+  <div class="row"><button id="autoBtn">Drift automatically</button></div>
+</section>
+
+<section>
+  <h2>Layers</h2>
+  <div id="layers"></div>
+</section>
+
+<section>
+  <h2>Schedule</h2>
+  <div class="row"><label style="width:auto"><input type="checkbox" id="schOn"> Fade in and out on a nightly schedule</label></div>
+  <div class="row"><label>Fade in</label><input type="time" id="schStart"></div>
+  <div class="row"><label>Fade out</label><input type="time" id="schEnd"></div>
+</section>
+
+<section>
+  <h2>Software</h2>
+  <button id="updateBtn">Update from GitHub</button>
+  <pre id="updateLog"></pre>
+</section>
+
+<script>
+const $ = id => document.getElementById(id);
+const post = (url, body) => fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}).then(r => r.json());
+const cmd = (c, ...args) => post('/api/cmd', {cmd:c, args}).then(refresh);
+let built = false, dragging = false, st = {sc:{}, settings:{}};
+
+function label(s) { return s.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()); }
+
+function build() {
+  const sc = st.sc, set = st.settings;
+  $('scenes').innerHTML = '';
+  (sc.scenes || []).filter(n => n !== 'solo').forEach(n => {
+    const b = document.createElement('button');
+    b.textContent = label(n); b.dataset.scene = n;
+    b.onclick = () => cmd('scene', n, 20.0);
+    $('scenes').appendChild(b);
+  });
+  $('layers').innerHTML = '';
+  (sc.layers || []).forEach(l => {
+    const row = document.createElement('div'); row.className = 'row';
+    row.innerHTML = `<label>${label(l)}</label><input type="range" min="0" max="2" step="0.05"><span class="val"></span><button>Solo</button>`;
+    const [range, val, solo] = [row.querySelector('input'), row.querySelector('.val'), row.querySelector('button')];
+    range.dataset.layer = l; solo.dataset.solo = l;
+    range.oninput = () => { val.textContent = (+range.value).toFixed(2); };
+    range.onpointerdown = () => dragging = true;
+    range.onchange = () => { dragging = false; post('/api/settings', {trim:[l, +range.value]}); };
+    solo.onclick = () => cmd('solo', l);
+    $('layers').appendChild(row);
+  });
+  const sch = set.schedule || {};
+  $('schOn').checked = !!sch.enabled; $('schStart').value = sch.on || '18:30'; $('schEnd').value = sch.off || '23:30';
+  built = (sc.layers || []).length > 0;
+}
+
+function render() {
+  const sc = st.sc, set = st.settings;
+  $('dot').className = 'dot' + (sc.online ? ' on' : '');
+  $('statusText').innerHTML = sc.online
+    ? `${sc.playing ? 'Playing' : 'Faded out'} · scene <b>${label(sc.scene || '–')}</b>${sc.auto ? ' (drifting)' : ' (held)'} · CPU ${sc.cpuAvg}% avg, ${sc.cpuPeak}% peak`
+    : 'SuperCollider is not running';
+  if (!dragging) {
+    $('master').value = set.master; $('masterVal').textContent = (+set.master).toFixed(2);
+    document.querySelectorAll('[data-layer]').forEach(r => {
+      const v = (set.trims || {})[r.dataset.layer] ?? 1;
+      r.value = v; r.nextElementSibling.textContent = (+v).toFixed(2);
+    });
+  }
+  document.querySelectorAll('[data-scene]').forEach(b => b.classList.toggle('active', b.dataset.scene === sc.scene));
+  $('autoBtn').classList.toggle('active', !!sc.auto);
+}
+
+function refresh() {
+  return fetch('/api/status').then(r => r.json()).then(s => { st = s; if (!built) build(); render(); }).catch(() => {
+    $('dot').className = 'dot'; $('statusText').textContent = 'Pi not reachable';
+  });
+}
+
+$('playBtn').onclick = () => cmd('start', 10.0);
+$('stopBtn').onclick = () => cmd('stop', 10.0);
+$('autoBtn').onclick = () => cmd('auto');
+$('master').oninput = e => { dragging = true; $('masterVal').textContent = (+e.target.value).toFixed(2); };
+$('master').onchange = e => { dragging = false; post('/api/settings', {master:+e.target.value}); };
+const saveSchedule = () => post('/api/settings', {schedule:{enabled:$('schOn').checked, on:$('schStart').value, off:$('schEnd').value}});
+['schOn', 'schStart', 'schEnd'].forEach(id => $(id).onchange = saveSchedule);
+$('updateBtn').onclick = () => {
+  $('updateLog').textContent = 'Pulling…';
+  post('/api/update', {}).then(r => { $('updateLog').textContent = r.log || (r.ok ? 'Done' : 'Failed'); built = false; refresh(); })
+    .catch(() => $('updateLog').textContent = 'Update request failed');
+};
+
+refresh(); setInterval(refresh, 3000);
+</script>
+</body>
+</html>
