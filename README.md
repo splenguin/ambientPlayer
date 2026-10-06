@@ -18,7 +18,7 @@ install.sh           sets everything up
 
 ## Setting up a Pi
 
-Target: Raspberry Pi 3B with Raspberry Pi OS Lite (64-bit, Bookworm).
+Target: Raspberry Pi 3B with Raspberry Pi OS Lite (64-bit, Bookworm or Trixie).
 
 1. Flash Raspberry Pi OS Lite (64-bit) with Raspberry Pi Imager. In its
    settings, set the hostname (this guide uses `ambientPlayer`), create your user, enable SSH and
@@ -31,9 +31,12 @@ Target: Raspberry Pi 3B with Raspberry Pi OS Lite (64-bit, Bookworm).
    ```
    On GitHub, open the repo's Settings, then Deploy keys, then Add deploy key.
    Paste the key and leave "Allow write access" off.
-3. Clone and install:
+3. Clone and install. The install takes a while, so run it inside tmux; that
+   way a dropped SSH connection can't kill it (`tmux attach -t install` to
+   get back in):
    ```
    git clone git@github.com:splenguin/ambientPlayer.git ~/ambientPlayer
+   sudo apt install -y tmux && tmux new -s install
    sudo ~/ambientPlayer/install.sh
    ```
 4. Open `http://ambientPlayer.local/` on your phone.
