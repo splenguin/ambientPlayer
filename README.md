@@ -10,6 +10,7 @@ levels and schedule the nightly fade in and out from your phone.
 sc/halloween.scd     the sound: crickets, fog, drone, leaves, spirits, whispers, creaks, owls
 sc/main.scd          Pi entry point: loads the patch, listens for OSC, writes status
 tools/               name-usb-cards.sh: fixed names for USB sound cards
+                     diagnose.sh: load, routing and logs to paste when something's wrong
 web/server.py        control page and its API (Python standard library only)
 web/index.html       the page itself
 systemd/*.service    jackd, second-card bridge, sclang and the web page, started at boot

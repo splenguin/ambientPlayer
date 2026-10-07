@@ -24,7 +24,13 @@ var dir = thisProcess.nowExecutingPath.dirname;
 var statusPath = "AMBIENT_STATUS".getenv ? "/tmp/ambient-status.json";
 var bootTime = Date.getDate.rawSeconds.asInteger;
 var playing = true, master = 1.0, trims = IdentityDictionary.new;
-var birds = true, testing = -1, testTask;
+var birds = true, testing = -1, testTask, restTask;
+// While stopped or testing speakers, the synth layers are paused so the Pi's
+// CPU is free. Pattern layers keep running (pausing them would pile up notes)
+// but cost little.
+var synthLayers = { (~layers ++ [\mix]).select { |l| Ndef(l).source.isKindOf(Function) } };
+var rest = { |delay| restTask.stop; restTask = fork { delay.wait; synthLayers.().do { |l| Ndef(l).pause } } };
+var wake = { restTask.stop; synthLayers.().do { |l| Ndef(l).resume } };
 var envOr = { |name, default| var v = name.getenv; if(v.isNil or: { v.isEmpty }) { default } { v } };
 var sym = { |x| x.asString.asSymbol };
 var num = { |x, default| if(x.isNil) { default } { x.asFloat } };
@@ -58,12 +64,14 @@ OSCdef(\ambMaster, { |msg|
 OSCdef(\ambStart, { |msg|
 	playing = true;
 	if(testing >= 0) { testTask.stop; testing = -1 };
+	wake.();
 	Ndef(\mix).play(0, ~mixChannels, fadeTime: num.(msg[1], 10));
 }, '/start');
 OSCdef(\ambStop, { |msg|
 	playing = false;
 	if(testing >= 0) { testTask.stop; testing = -1 };
 	Ndef(\mix).stop(num.(msg[1], 10));
+	rest.(num.(msg[1], 10) + 1);
 }, '/stop');
 OSCdef(\ambBirds, { |msg|
 	birds = num.(msg[1], 1) > 0;
@@ -88,9 +96,10 @@ OSCdef(\ambTest, { |msg|
 	testTask.stop;
 	testing = which.clip(-1, count);
 	if(testing < 0) {
-		if(playing) { Ndef(\mix).play(0, ~mixChannels, fadeTime: 2) };
+		if(playing) { wake.(); Ndef(\mix).play(0, ~mixChannels, fadeTime: 2) };
 	} {
 		Ndef(\mix).stop(0.5);
+		rest.(1);
 		testTask = Task {
 			var speakers = if(testing == 0) { (1..count) } { [testing] };
 			1.wait;
