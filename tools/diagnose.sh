@@ -25,6 +25,12 @@ grep -v '^\s*#' /etc/default/ambient | grep -v '^\s*$'
 section "cards"
 aplay -l | grep '^card'
 
+section "card volumes"
+. /etc/default/ambient
+for d in "$AMBIENT_DEVICE" $AMBIENT_DEVICE2; do
+	echo "--- $d"; amixer -c "${d#*:}" 2>&1 | grep -E "control|Playback.*\[" | head -8
+done
+
 section "JACK connections"
 jack_lsp -c 2>&1 | head -40
 
@@ -36,7 +42,6 @@ journalctl -u ambient-jack -u ambient-bridge -u ambient-sc --since "-15 min" --n
 	| grep -iv '^$' | tail -40
 
 if [ "$1" = "--speakers" ]; then
-	. /etc/default/ambient
 	section "speaker test without SuperCollider"
 	sudo systemctl stop ambient-sc ambient-bridge ambient-jack
 	for dev in "$AMBIENT_DEVICE" $AMBIENT_DEVICE2; do
