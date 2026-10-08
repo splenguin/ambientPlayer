@@ -193,15 +193,17 @@ s.waitForBoot {
 		Out.ar(out + chan, sig);
 	}).add;
 
-	// A wolf howl: a smooth, slightly musical voice that slides up, holds with
-	// a little vibrato and falls away. The mouth opens to "haa" early and
-	// closes to "hoo" toward the end: soft vowel resonances on the upper
-	// harmonics glide between the two. Its own small reverb puts it far off.
+	// A wolf howl: a smooth, slightly musical voice that holds a low note,
+	// slides quickly up, holds with a little vibrato and falls away. The mouth
+	// opens to "haa" as it rises and closes to "hoo" toward the end: soft vowel
+	// resonances on the upper harmonics glide between the two. Its own small reverb puts it far off.
 	SynthDef(\howl, { |out = 0, chan = 0, len = 5, f0 = 380, peak = 1.5, amp = 0.2, far = 0.6|
-		var f = EnvGen.kr(Env([f0 * 0.75, f0 * peak, f0 * peak * 0.96, f0 * 0.7], [0.22, 0.55, 0.23] * len, [\sin, 0, \sin]));
+		// Holds the low note, then rises quickly (but smoothly) to the high one.
+		var f = EnvGen.kr(Env([f0 * 0.75, f0 * 0.78, f0 * peak, f0 * peak * 0.96, f0 * 0.7],
+			[0.2, 0.07, 0.48, 0.25] * len, [0, \sin, 0, \sin]));
 		var vib = 1 + SinOsc.kr(Rand(4.5, 6), 0, Line.kr(0, 0.006, len)) + (LFNoise1.kr(12) * 0.003);
 		var ff = f * vib;
-		var open = EnvGen.kr(Env([0.3, 1, 0.85, 0], [0.12, 0.35, 0.53] * len, \sin));   // haa ... hoo
+		var open = EnvGen.kr(Env([0.3, 1, 0.85, 0], [0.27, 0.25, 0.48] * len, \sin));   // haa ... hoo
 		var f1 = open.linexp(0, 1, 380, 800), f2 = open.linexp(0, 1, 700, 1250);
 		var harm = LPF.ar(Saw.ar(ff), 3000);
 		var vowel = BPF.ar(harm, [f1, f2], [0.5, 0.45], [1, 0.6]).sum * 1.4;
