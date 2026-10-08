@@ -41,6 +41,15 @@ echo "$RUN_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart ambient-sc.servi
 chmod 440 "$SUDOERS.tmp"
 visudo -cf "$SUDOERS.tmp" && mv "$SUDOERS.tmp" "$SUDOERS"
 
+# USB dongles start at a low volume, and ALSA restores the saved level when a
+# card appears (after any boot-time setting). Turn the configured cards fully
+# up and save that, so it is what ALSA restores.
+( . /etc/default/ambient
+  for d in "$AMBIENT_DEVICE" $AMBIENT_DEVICE2; do
+    for k in PCM Speaker Master; do amixer -q -c "${d#*:}" sset "$k" 100% unmute 2>/dev/null; done
+  done )
+alsactl store 2>/dev/null || true
+
 systemctl daemon-reload
 systemctl enable ambient-jack.service ambient-bridge.service ambient-sc.service ambient-web.service
 systemctl restart ambient-jack.service ambient-bridge.service ambient-sc.service ambient-web.service
