@@ -17,6 +17,7 @@ Environment:
 
 import json
 import os
+import sys
 import shlex
 import socket
 import struct
@@ -172,6 +173,7 @@ def background():
 def git_update():
     """Pull the software and the sounds; restart SuperCollider if either changed."""
     log, changed = [], False
+    me = Path(__file__).read_bytes()
     for name, repo in (("ambientPlayer", REPO), ("ambientSounds", SOUNDS)):
         if not (repo / ".git").exists() and name == "ambientSounds":
             log.append(f"{name}: not found at {repo}, skipped")
@@ -186,6 +188,10 @@ def git_update():
     log = "\n".join(log)
     if not changed:
         return True, log
+    if Path(__file__).read_bytes() != me:
+        # This web server changed too: start the new one once this reply is sent.
+        threading.Timer(1.0, lambda: os.execv(sys.executable, [sys.executable] + sys.argv)).start()
+        log += "\nRestarting the web page server."
     r = subprocess.run(RESTART, capture_output=True, text=True, timeout=60)
     log += "\n" + (r.stdout + r.stderr).strip()
     return r.returncode == 0, log + ("\nRestarted SuperCollider." if r.returncode == 0 else "")
