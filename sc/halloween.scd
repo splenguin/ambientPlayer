@@ -121,10 +121,21 @@ s.waitForBoot {
 		var peak = Lag.ar(Latch.ar(TRand.ar(0.4, 1, trig), trig), 0.2);
 		var s = Lag.ar(Latch.ar(TRand.ar(0, 1, trig), trig).squared, 0.2);   // how hissy this puff is
 		var swell = LFNoise2.kr(0.5).range(0.45, 1);              // the phrase rises and sinks
-		var noise = (BrownNoise.ar * 0.4) + (PinkNoise.ar * 0.6);
-		var mouth = BPF.ar(noise, 550 * tone, 1.8) + (BPF.ar(noise, 1100 * tone, 1.5) * 0.6);
+		// The mouth's shape glides smoothly between an open "haaa" (1) and a
+		// rounded "hooo" (0), moving with the syllables and drifting slowly
+		// underneath. Soft, wide resonances follow it, which gives the gentle
+		// phaser-like sweep of real whispering without any whistle or pitch.
+		var open = ((LFNoise2.kr(rate * 0.5) * 0.65) + (LFNoise2.kr(0.2) * 0.35)).range(0, 1).lag(0.05);
+		var f1 = open.linexp(0, 1, 320, 820) * tone;
+		var f2 = open.linexp(0, 1, 780, 1250) * tone * LFNoise2.kr(0.7).range(0.94, 1.06);
+		var f3 = open.linexp(0, 1, 2250, 2550) * tone;
+		var noise = (BrownNoise.ar * 0.3) + (PinkNoise.ar * 0.7);
+		var shaped = BPF.ar(noise, [f1, f2, f3], [0.35, 0.28, 0.25], [1, 0.75, 0.3]).sum * 2.2;
+		var bed = BPF.ar(noise, 700 * tone, 2) * 0.35;           // unshaped breath underneath
+		var mouth = shaped + bed;
 		var hiss = BPF.ar(PinkNoise.ar, 2600 * tone, 1.2) * 0.35;
-		var sig = ((mouth * (1 - (s * 0.4))) + (hiss * s * 0.6)) * syl * peak * swell;
+		var emph = open.linlin(0, 1, 0.75, 1);                     // more open, a little louder
+		var sig = ((mouth * (1 - (s * 0.4))) + (hiss * s * 0.6)) * syl * peak * swell * emph;
 		var pos = Line.kr(0, 1, len), same = (chan - to).abs < 0.5;
 		sig = HPF.ar(LPF.ar(sig, far.linexp(0, 1, 4500, 2000)), 150) * env * amp * far.linlin(0, 1, 1, 0.45);
 		Out.ar(out + chan, sig * Select.kr(same, [(1 - pos).sqrt, 1]));
