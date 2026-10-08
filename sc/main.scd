@@ -10,6 +10,7 @@
 //   /stop [fade]           fade the sound out (the patch keeps running silently)
 //   /sceneSet <scene> <key> <value>  change one value of a scene, e.g. fogAmp or verb
 //   /sceneReset <scene>    put a scene back to its original values
+//   /boost <0..24>         extra gain in dB before the limiter (default 0)
 //   /birds <0|1>           birds (owls) on the elevated speakers off or on
 //   /test <n>              speaker test: n = 1..N repeats one speaker, 0 cycles
 //                          through all of them, -1 ends the test
@@ -25,7 +26,7 @@
 var dir = thisProcess.nowExecutingPath.dirname;
 var statusPath = "AMBIENT_STATUS".getenv ? "/tmp/ambient-status.json";
 var bootTime = Date.getDate.rawSeconds.asInteger;
-var playing = true, master = 1.0, trims = IdentityDictionary.new;
+var playing = true, master = 1.0, boost = 0, trims = IdentityDictionary.new;
 var birds = true, testing = -1, testTask, restTask;
 // While stopped or testing speakers, the synth layers and the mixer pause so
 // the Pi's CPU is free (see ~updateSleep in halloween.scd).
@@ -83,6 +84,10 @@ OSCdef(\ambStop, { |msg|
 	Ndef(\mix).stop(num.(msg[1], 10));
 	rest.(num.(msg[1], 10) + 1);
 }, '/stop');
+OSCdef(\ambBoost, { |msg|
+	boost = num.(msg[1], 0).clip(0, 24);
+	Ndef(\mix).set(\boost, boost);
+}, '/boost');
 OSCdef(\ambSceneSet, { |msg|
 	~setScene.(sym.(msg[1]), sym.(msg[2]), num.(msg[3], 0).clip(0, 2));
 }, '/sceneSet');
@@ -133,10 +138,10 @@ OSCdef(\ambTest, { |msg|
 Routine {
 	loop {
 		var esc = { |x| x.asString.replace("\\", "\\\\").replace("\"", "\\\"") };
-		var json = "{\"boot\": %, \"scene\": \"%\", \"auto\": %, \"playing\": %, \"master\": %, \"outputs\": %, \"speakers\": [%], \"voices\": {%}, \"birds\": %, \"owls\": %, \"test\": %, \"cpuAvg\": %, \"cpuPeak\": %, \"layers\": [%], \"scenes\": [%], \"trims\": {%}, \"paused\": [%], \"sceneValues\": {%}}";
+		var json = "{\"boot\": %, \"scene\": \"%\", \"auto\": %, \"playing\": %, \"master\": %, \"boost\": %, \"outputs\": %, \"speakers\": [%], \"voices\": {%}, \"birds\": %, \"owls\": %, \"test\": %, \"cpuAvg\": %, \"cpuPeak\": %, \"layers\": [%], \"scenes\": [%], \"trims\": {%}, \"paused\": [%], \"sceneValues\": {%}}";
 		var f;
 		json = json.format(
-			bootTime, esc.(~currentScene ? ""), Tdef(\scenes).isPlaying, playing, master,
+			bootTime, esc.(~currentScene ? ""), Tdef(\scenes).isPlaying, playing, master, boost,
 			~outputs,
 			(~roles ? []).collect { |r| "\"%\"".format(esc.(r)) }.join(", "),
 			(~owlVoices ?? { () }).asAssociations.collect { |a| "\"%\": %".format(esc.(a.key), a.value) }.join(", "),

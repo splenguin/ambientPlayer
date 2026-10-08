@@ -40,6 +40,7 @@ SC_ADDR = ("127.0.0.1", 57120)
 
 DEFAULT_SETTINGS = {
     "master": 0.8,
+    "boost": 0.0,  # dB before the limiter
     "birds": True,
     "trims": {},
     "scenes": {},  # scene -> {key: value}, edits on top of the patch's own values
@@ -113,6 +114,7 @@ def read_status():
 def push_settings():
     """Send saved master, trims and scene edits to SuperCollider (after it (re)starts)."""
     send_osc("/master", float(settings["master"]))
+    send_osc("/boost", float(settings["boost"]))
     send_osc("/birds", int(bool(settings["birds"])))
     for layer, amp in settings["trims"].items():
         send_osc("/trim", layer, float(amp))
@@ -233,6 +235,9 @@ class Handler(BaseHTTPRequestHandler):
                 if "master" in req:
                     settings["master"] = min(max(float(req["master"]), 0.0), 1.0)
                     send_osc("/master", settings["master"])
+                if "boost" in req:
+                    settings["boost"] = min(max(float(req["boost"]), 0.0), 24.0)
+                    send_osc("/boost", settings["boost"])
                 if "birds" in req:
                     settings["birds"] = bool(req["birds"])
                     send_osc("/birds", int(settings["birds"]))

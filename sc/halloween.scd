@@ -521,7 +521,8 @@ s.waitForBoot {
 				* if(name == \owls) { Lag.kr(\birds.kr(1), 4) } { 1 }
 		}.sum;
 		sig = sig + (FreeVerb.ar(sig, 1, 0.9, 0.6) * VarLag.kr(\verb.kr(0.15), fade, warp: \sin));
-		sig = Limiter.ar(LeakDC.ar(sig) * Lag.kr(\master.kr(1), 1), 0.9);
+		// \boost (dB) lifts the whole mix to suit the amps; the limiter catches peaks.
+		sig = Limiter.ar(LeakDC.ar(sig) * Lag.kr(\master.kr(1), 1) * Lag.kr(\boost.kr(0), 1).dbamp, 0.9);
 		if(desk.not) {
 			// each patch channel back to its real output
 			var outs = Array.fill(roles.size, { Silent.ar });
