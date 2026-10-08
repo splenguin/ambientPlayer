@@ -22,6 +22,8 @@
   .row { display:flex; align-items:center; gap:10px; margin:8px 0; }
   .row label { width:80px; flex:none; }
   .row input[type=range] { flex:1; min-width:0; accent-color:var(--accent); }
+  .row .val.edited { color:var(--accent); }
+  .row .tag { width:52px; flex:none; font-size:12px; color:var(--dim); }
   .row .val { width:40px; text-align:right; color:var(--dim); font-variant-numeric:tabular-nums; }
   input[type=time] { background:#23262d; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px; font:inherit; }
   pre { white-space:pre-wrap; font-size:12px; color:var(--dim); margin:10px 0 0; }
@@ -44,6 +46,12 @@
   <h2>Scene</h2>
   <div class="grid" id="scenes"></div>
   <div class="row"><button id="autoBtn">Drift automatically</button></div>
+  <div id="sceneEditor" hidden>
+    <h2 style="margin-top:14px">Scene settings: <span id="editName"></span></h2>
+    <div style="color:var(--dim);font-size:14px">Changes play straight away and are saved into this scene. Layers at zero are paused to save CPU.</div>
+    <div id="sceneRows"></div>
+    <div class="row"><button id="resetScene">Reset to original</button></div>
+  </div>
 </section>
 
 <section>
@@ -78,7 +86,29 @@
 const $ = id => document.getElementById(id);
 const post = (url, body) => fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}).then(r => r.json());
 const cmd = (c, ...args) => post('/api/cmd', {cmd:c, args}).then(refresh);
-let built = false, dragging = false, st = {sc:{}, settings:{}};
+let built = false, dragging = false, st = {sc:{}, settings:{}}, editing = null;
+
+// Scene keys shown in the editor: one level per layer, then reverb and cricket pace.
+function sceneKeys(sc) {
+  return (sc.layers || []).map(l => [l + 'Amp', label(l), 0, 1.5, l])
+    .concat([['verb', 'Reverb', 0, 0.6], ['tempo', 'Cricket pace', 0.5, 1.5]]);
+}
+
+function buildEditor(name) {
+  editing = name;
+  $('sceneRows').innerHTML = '';
+  $('editName').textContent = label(name);
+  sceneKeys(st.sc).forEach(([key, text, min, max, layer]) => {
+    const row = document.createElement('div'); row.className = 'row';
+    row.innerHTML = `<label>${text}</label><input type="range" min="${min}" max="${max}" step="0.01"><span class="val"></span><span class="tag"></span>`;
+    const [range, val, tag] = [row.querySelector('input'), row.querySelector('.val'), row.querySelector('.tag')];
+    range.dataset.sceneKey = key; tag.dataset.layerTag = layer || '';
+    range.oninput = () => { val.textContent = (+range.value).toFixed(2); };
+    range.onpointerdown = () => dragging = true;
+    range.onchange = () => { dragging = false; post('/api/settings', {sceneSet:[editing, key, +range.value]}).then(refresh); };
+    $('sceneRows').appendChild(row);
+  });
+}
 
 function label(s) { return s.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()); }
 
@@ -138,6 +168,21 @@ function render() {
   document.querySelectorAll('[data-test]').forEach(b => b.classList.toggle('active', +b.dataset.test === sc.test && sc.test >= 0));
   document.querySelectorAll('[data-scene]').forEach(b => b.classList.toggle('active', b.dataset.scene === sc.scene));
   $('autoBtn').classList.toggle('active', !!sc.auto);
+  const values = (sc.sceneValues || {})[sc.scene];
+  $('sceneEditor').hidden = !sc.online || !values || sc.scene === 'solo';
+  if (values) {
+    if (editing !== sc.scene) buildEditor(sc.scene);
+    const edits = (set.scenes || {})[sc.scene] || {};
+    document.querySelectorAll('[data-scene-key]').forEach(r => {
+      const k = r.dataset.sceneKey, v = values[k] ?? 0;
+      if (!dragging) { r.value = v; r.nextElementSibling.textContent = (+v).toFixed(2); }
+      r.nextElementSibling.classList.toggle('edited', k in edits);
+    });
+    document.querySelectorAll('[data-layer-tag]').forEach(t => {
+      t.textContent = (sc.paused || []).includes(t.dataset.layerTag) ? 'paused' : '';
+    });
+    $('resetScene').hidden = Object.keys(edits).length === 0;
+  }
   const live = sc.online && sc.test < 0;
   $('playBtn').classList.toggle('primary', live && !!sc.playing);
   $('stopBtn').classList.toggle('primary', live && !sc.playing);
@@ -152,6 +197,7 @@ function refresh() {
 $('playBtn').onclick = () => cmd('start', 3.0);
 $('stopBtn').onclick = () => cmd('stop', 3.0);
 $('autoBtn').onclick = () => cmd('auto');
+$('resetScene').onclick = () => post('/api/settings', {sceneReset: editing}).then(refresh);
 $('birdsOn').onchange = e => post('/api/settings', {birds:e.target.checked}).then(refresh);
 $('master').oninput = e => { dragging = true; $('masterVal').textContent = (+e.target.value).toFixed(2); };
 $('master').onchange = e => { dragging = false; post('/api/settings', {master:+e.target.value}); };

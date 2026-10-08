@@ -8,6 +8,8 @@
 //   /master <0..1>         overall level
 //   /start [fade]          fade the sound in
 //   /stop [fade]           fade the sound out (the patch keeps running silently)
+//   /sceneSet <scene> <key> <value>  change one value of a scene, e.g. fogAmp or verb
+//   /sceneReset <scene>    put a scene back to its original values
 //   /birds <0|1>           birds (owls) on the elevated speakers off or on
 //   /test <n>              speaker test: n = 1..N repeats one speaker, 0 cycles
 //                          through all of them, -1 ends the test
@@ -25,12 +27,13 @@ var statusPath = "AMBIENT_STATUS".getenv ? "/tmp/ambient-status.json";
 var bootTime = Date.getDate.rawSeconds.asInteger;
 var playing = true, master = 1.0, trims = IdentityDictionary.new;
 var birds = true, testing = -1, testTask, restTask;
-// While stopped or testing speakers, the synth layers are paused so the Pi's
-// CPU is free. Pattern layers keep running (pausing them would pile up notes)
-// but cost little.
-var synthLayers = { (~layers ++ [\mix]).select { |l| Ndef(l).source.isKindOf(Function) } };
-var rest = { |delay| restTask.stop; restTask = fork { delay.wait; synthLayers.().do { |l| Ndef(l).pause } } };
-var wake = { restTask.stop; synthLayers.().do { |l| Ndef(l).resume } };
+// While stopped or testing speakers, the synth layers and the mixer pause so
+// the Pi's CPU is free (see ~updateSleep in halloween.scd).
+var rest = { |delay|
+	restTask.stop;
+	restTask = fork { delay.wait; ~resting = true; ~updateSleep.(0); Ndef(\mix).pause };
+};
+var wake = { restTask.stop; ~resting = false; Ndef(\mix).resume; ~updateSleep.(0) };
 var envOr = { |name, default| var v = name.getenv; if(v.isNil or: { v.isEmpty }) { default } { v } };
 var sym = { |x| x.asString.asSymbol };
 var num = { |x, default| if(x.isNil) { default } { x.asFloat } };
@@ -73,6 +76,10 @@ OSCdef(\ambStop, { |msg|
 	Ndef(\mix).stop(num.(msg[1], 10));
 	rest.(num.(msg[1], 10) + 1);
 }, '/stop');
+OSCdef(\ambSceneSet, { |msg|
+	~setScene.(sym.(msg[1]), sym.(msg[2]), num.(msg[3], 0).clip(0, 2));
+}, '/sceneSet');
+OSCdef(\ambSceneReset, { |msg| ~resetScene.(sym.(msg[1])) }, '/sceneReset');
 OSCdef(\ambBirds, { |msg|
 	birds = num.(msg[1], 1) > 0;
 	~birds.(birds);
@@ -119,7 +126,7 @@ OSCdef(\ambTest, { |msg|
 Routine {
 	loop {
 		var esc = { |x| x.asString.replace("\\", "\\\\").replace("\"", "\\\"") };
-		var json = "{\"boot\": %, \"scene\": \"%\", \"auto\": %, \"playing\": %, \"master\": %, \"outputs\": %, \"speakers\": [%], \"voices\": {%}, \"birds\": %, \"owls\": %, \"test\": %, \"cpuAvg\": %, \"cpuPeak\": %, \"layers\": [%], \"scenes\": [%], \"trims\": {%}}";
+		var json = "{\"boot\": %, \"scene\": \"%\", \"auto\": %, \"playing\": %, \"master\": %, \"outputs\": %, \"speakers\": [%], \"voices\": {%}, \"birds\": %, \"owls\": %, \"test\": %, \"cpuAvg\": %, \"cpuPeak\": %, \"layers\": [%], \"scenes\": [%], \"trims\": {%}, \"paused\": [%], \"sceneValues\": {%}}";
 		var f;
 		json = json.format(
 			bootTime, esc.(~currentScene ? ""), Tdef(\scenes).isPlaying, playing, master,
@@ -129,7 +136,12 @@ Routine {
 			birds, ~owlCount ? 0, testing, (s.avgCPU ? 0).round(0.1), (s.peakCPU ? 0).round(0.1),
 			(~layers ? []).collect { |l| "\"%\"".format(l) }.join(", "),
 			(~sceneNames ? []).collect { |l| "\"%\"".format(l) }.join(", "),
-			(~layers ? []).collect { |l| "\"%\": %".format(l, trims[l] ? 1) }.join(", ")
+			(~layers ? []).collect { |l| "\"%\": %".format(l, trims[l] ? 1) }.join(", "),
+			(~layers ? []).select { |l| Ndef(l).paused }.collect { |l| "\"%\"".format(l) }.join(", "),
+			(~scenes ?? { () }).keys.asArray.sort.collect { |name|
+				"\"%\": {%}".format(name, ~scenes[name].keys.asArray.sort.collect { |k|
+					"\"%\": %".format(k, ~scenes[name][k].round(0.001)) }.join(", "))
+			}.join(", ")
 		);
 		f = File(statusPath, "w");
 		if(f.isOpen) { f.write(json); f.close };

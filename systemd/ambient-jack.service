@@ -8,6 +8,9 @@ EnvironmentFile=/etc/default/ambient
 Environment=JACK_NO_AUDIO_RESERVATION=1
 LimitRTPRIO=95
 LimitMEMLOCK=infinity
+# Run the CPU at full speed. With the default on-demand setting the Pi idles
+# at a low clock and audio gets less headroom than it needs.
+ExecStartPre=+-/bin/sh -c 'for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo performance > "$$g"; done; true'
 # USB dongles often start with their volume well below full. Turn them all the
 # way up; the level is set in SuperCollider and on the amps.
 ExecStartPre=-/bin/sh -c 'for d in "$$AMBIENT_DEVICE" "$$AMBIENT_DEVICE2"; do c=$${d#*:}; [ -n "$$c" ] || continue; for k in PCM Speaker Master; do amixer -q -c "$$c" sset "$$k" 100%% unmute 2>/dev/null; done; done; true'

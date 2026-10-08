@@ -70,7 +70,21 @@ s.waitForBoot {
 		upRoles.collect { |r, k| if(r == "birds" or: { r == voice.toLower }) { ground + k } }.reject(_.isNil)
 	};
 	var levels = IdentityDictionary.new;         // current scene levels, read by the event layers
-	var scenes, next, applyScene;
+	var scenes, next, applyScene, sceneDefaults;
+	// Layers made of synths (not event patterns) cost CPU even when silent, so
+	// one whose level is zero is paused once it has faded out, and resumed
+	// before it fades back in. While ~resting (stopped, or a speaker test) they
+	// all pause.
+	var trimLevels = IdentityDictionary.new;
+	var synthLayers = { layers.select { |l| Ndef(l).source.isKindOf(Function) } };
+	var audible = { |l| ((levels[(l ++ "Amp").asSymbol] ? 0) * (trimLevels[l] ? 1)) > 0.001 };
+	var updateSleep = { |delay = 0|
+		synthLayers.value.do { |l| if(~resting != true and: { audible.(l) }) { Ndef(l).resume } };
+		fork {
+			delay.wait;
+			synthLayers.value.do { |l| if(~resting == true or: { audible.(l).not }) { Ndef(l).pause } };
+		};
+	};
 
 	// Old wood under strain: a limb or a post creaking as it sways. Stick-slip
 	// friction (an uneven train of tiny slips that speeds up as the strain
@@ -185,8 +199,8 @@ s.waitForBoot {
 			var syl = Impulse.ar(pulseRate) * gate;
 			var sylLen = 0.55 / pulseRate;
 			var env = EnvGen.ar(Env([0, 1, 0.7, 0], [0.2, 0.4, 0.4] * sylLen, [2, 0, -3]), syl);
-			var accent = Latch.ar(LFNoise1.ar(40).range(0.5, 1), syl);
-			var drift = Latch.ar(LFNoise1.ar(3).range(0.994, 1.006), chirp);
+			var accent = Latch.ar(LFNoise1.kr(40).range(0.5, 1), syl);
+			var drift = Latch.ar(LFNoise1.kr(3).range(0.994, 1.006), chirp);
 			var f = freq * drift * (1 - (env * 0.012));
 			var tone = SinOsc.ar(f) + (SinOsc.ar(f * 2) * 0.05) + (BPF.ar(WhiteNoise.ar, f, 0.04) * 1.5);
 			var active = LFNoise1.kr(Rand(0.01, 0.04)).range(-0.3, 1).clip(0, 1).lag(2);
@@ -407,6 +421,7 @@ s.waitForBoot {
 		leafWind:  (cricketsAmp: 0.9, fogAmp: 0.1, droneAmp: 0.15, leavesAmp: 1.0, spiritsAmp: 0.0, whispersAmp: 0.0, creakAmp: 0.6, owlsAmp: 0.6, verb: 0.12, tempo: 1.0),
 		creaking:  (cricketsAmp: 0.7, fogAmp: 0.3, droneAmp: 0.5,  leavesAmp: 0.5, spiritsAmp: 0.3, whispersAmp: 0.5, creakAmp: 1.0, owlsAmp: 0.2, verb: 0.18, tempo: 0.95)
 	);
+	sceneDefaults = scenes.collect(_.copy);
 	// Which scenes can follow which, so the night drifts instead of jumping.
 	next = (
 		clear: [\fogRising, \leafWind, \creaking],
@@ -423,13 +438,34 @@ s.waitForBoot {
 		levels.putAll(sc);
 		Ndef(\mix).set(\fade, fade ? fadeTime, *sc.asKeyValuePairs);
 		Ndef(\crickets).set(\tempo, sc[\tempo]);
+		updateSleep.((fade ? fadeTime) + 2);
 	};
 
 	~layers = layers;
 	~sceneNames = scenes.keys.asArray.sort;
 	~scene = { |name, fade| if(scenes[name].notNil) { Tdef(\scenes).stop; applyScene.(name, fade) } };
 	~auto = { Tdef(\scenes).play };
-	~trim = { |layer, amp| Ndef(\mix).set((layer ++ "Trim").asSymbol, amp.clip(0, 2)) };
+	~trim = { |layer, amp|
+		trimLevels[layer] = amp.clip(0, 2);
+		Ndef(\mix).set((layer ++ "Trim").asSymbol, amp.clip(0, 2));
+		updateSleep.(4);
+	};
+	~updateSleep = updateSleep;
+	// Scene editing from the web page: change one value of a scene; if that
+	// scene is playing, it glides there over a couple of seconds.
+	~scenes = scenes;
+	~setScene = { |name, key, value|
+		if(scenes[name].notNil and: { scenes[name][key].notNil }) {
+			scenes[name][key] = value;
+			if(~currentScene == name) {
+				levels[key] = value;
+				Ndef(\mix).set(\fade, 2, key, value);
+				if(key == \tempo) { Ndef(\crickets).set(\tempo, value) };
+				updateSleep.(4);
+			};
+		};
+	};
+	~resetScene = { |name| sceneDefaults[name] !? { |d| d.keysValuesDo { |k, v| ~setScene.(name, k, v) } } };
 	~birds = { |on| Ndef(\mix).set(\birds, if(on) { 1 } { 0 }) };
 	~owlVoices = owlVoices.collect(_.size);       // voice -> number of recordings
 	~owlCount = owlVoices.values.collect(_.size).sum ? 0;

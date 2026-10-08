@@ -42,6 +42,7 @@ DEFAULT_SETTINGS = {
     "master": 0.8,
     "birds": True,
     "trims": {},
+    "scenes": {},  # scene -> {key: value}, edits on top of the patch's own values
     "schedule": {"enabled": False, "on": "18:30", "off": "23:30"},
 }
 
@@ -109,11 +110,14 @@ def read_status():
 
 
 def push_settings():
-    """Send saved master and trims to SuperCollider (after it (re)starts)."""
+    """Send saved master, trims and scene edits to SuperCollider (after it (re)starts)."""
     send_osc("/master", float(settings["master"]))
     send_osc("/birds", int(bool(settings["birds"])))
     for layer, amp in settings["trims"].items():
         send_osc("/trim", layer, float(amp))
+    for scene, values in settings["scenes"].items():
+        for key, value in values.items():
+            send_osc("/sceneSet", scene, key, float(value))
 
 
 def in_window(now, on, off):
@@ -216,6 +220,15 @@ class Handler(BaseHTTPRequestHandler):
                     layer, amp = str(req["trim"][0]), min(max(float(req["trim"][1]), 0.0), 2.0)
                     settings["trims"][layer] = amp
                     send_osc("/trim", layer, amp)
+                if "sceneSet" in req:
+                    scene, key = str(req["sceneSet"][0]), str(req["sceneSet"][1])
+                    value = min(max(float(req["sceneSet"][2]), 0.0), 2.0)
+                    settings["scenes"].setdefault(scene, {})[key] = value
+                    send_osc("/sceneSet", scene, key, value)
+                if "sceneReset" in req:
+                    scene = str(req["sceneReset"])
+                    settings["scenes"].pop(scene, None)
+                    send_osc("/sceneReset", scene)
                 if "schedule" in req:
                     sch = req["schedule"]
                     settings["schedule"] = {
