@@ -111,16 +111,20 @@ s.waitForBoot {
 	// puffs carry a little more hiss. Every edge is smooth, so nothing clicks. Sometimes the phrase
 	// drifts from one speaker to another; \far makes it quieter and duller.
 	SynthDef(\whisper, { |out = 0, chan = 0, to = 0, len = 2, amp = 0.2, rate = 5, far = 0, tone = 1|
-		var env = EnvGen.ar(Env([0, 1, 1, 0], [0.3, max(len - 0.7, 0.1), 0.4], \sin), doneAction: 2);
-		var trig = Impulse.ar(rate * LFNoise1.kr(2).range(0.7, 1.3));
-		var gap = TRand.ar(0, 1, trig) < 0.2;                      // a pause between "words"
-		var syl = EnvGen.ar(Env([0, 1, 0], [0.45, 0.55] / rate, \sin), trig * (1 - gap));
-		var peak = Latch.ar(TRand.ar(0.35, 1, trig), trig);
-		var s = Latch.ar(TRand.ar(0, 1, trig), trig).squared;      // how hissy this puff is
+		var env = EnvGen.ar(Env([0, 1, 1, 0], [0.8, max(len - 2, 0.1), 1.2], \sin), doneAction: 2);
+		// The pace drifts slowly and wobbles a little, so it never settles into a beat.
+		var trig = Impulse.ar(rate * LFNoise2.kr(0.3).range(0.6, 1.4) * LFNoise1.kr(1.5).range(0.85, 1.15));
+		var gap = TRand.ar(0, 1, trig) < 0.18;                     // a pause between "words"
+		// Each syllable swells for about half its length and fades over the
+		// rest and into the next one; the extra smoothing rounds every corner.
+		var syl = Lag2.ar(EnvGen.ar(Env([0, 1, 0], [0.6, 1.0] / rate, \sin), trig * (1 - gap)), 0.06);
+		var peak = Lag.ar(Latch.ar(TRand.ar(0.4, 1, trig), trig), 0.2);
+		var s = Lag.ar(Latch.ar(TRand.ar(0, 1, trig), trig).squared, 0.2);   // how hissy this puff is
+		var swell = LFNoise2.kr(0.5).range(0.45, 1);              // the phrase rises and sinks
 		var noise = (BrownNoise.ar * 0.4) + (PinkNoise.ar * 0.6);
 		var mouth = BPF.ar(noise, 550 * tone, 1.8) + (BPF.ar(noise, 1100 * tone, 1.5) * 0.6);
 		var hiss = BPF.ar(PinkNoise.ar, 2600 * tone, 1.2) * 0.35;
-		var sig = ((mouth * (1 - (s * 0.4))) + (hiss * s * 0.6)) * syl * peak;
+		var sig = ((mouth * (1 - (s * 0.4))) + (hiss * s * 0.6)) * syl * peak * swell;
 		var pos = Line.kr(0, 1, len), same = (chan - to).abs < 0.5;
 		sig = HPF.ar(LPF.ar(sig, far.linexp(0, 1, 4500, 2000)), 150) * env * amp * far.linlin(0, 1, 1, 0.45);
 		Out.ar(out + chan, sig * Select.kr(same, [(1 - pos).sqrt, 1]));
@@ -263,31 +267,32 @@ s.waitForBoot {
 		}
 	}));
 
-	// Whispers: someone unseen mutters a string of phrases from one spot, sometimes
-	// shifting a little as they go; now and then another answers from
+	// Whispers: something in the mist murmurs long, uneven, chant-like phrases
+	// from one spot, quiet and far enough off to stay half-heard; sometimes it
+	// shifts a little, and now and then a second voice murmurs along from
 	// elsewhere. Then silence for a while.
 	Ndef(\whispers).ar(n);
 	Ndef(\whispers, Pspawner({ |sp|
 		var phrase = { |chan, size, far|
-			var len = rrand(2.0, 5.0);
+			var len = rrand(4.0, 10.0);
 			var to = if(0.3.coin) { (chan + [-1, 1].choose) % n } { chan };
-			Pbind(\instrument, \whisper, \chan, chan, \to, to, \len, len, \rate, rrand(2.0, 3.5),
-				\tone, size, \far, far, \amp, rrand(0.35, 0.6), \dur, Pseq([len]))
+			Pbind(\instrument, \whisper, \chan, chan, \to, to, \len, len, \rate, rrand(1.8, 3.0),
+				\tone, size, \far, far, \amp, rrand(0.3, 0.5), \dur, Pseq([len]))
 		};
 		sp.wait(rrand(5, 20));
 		loop {
 			if((levels[\whispersAmp] ? 0) > 0.1) {
-				var chan = n.rand, size = rrand(0.85, 1.15), far = rrand(0.0, 0.6);
-				rrand(4, 10).do {
-					sp.seq(phrase.(chan, size, far));
-					if(0.25.coin and: { n > 1 }) {
+				var chan = n.rand, size = rrand(0.85, 1.15), far = rrand(0.2, 0.7);
+				rrand(3, 6).do {
+					if(0.25.coin and: { n > 1 }) {      // a second voice joins partway in
 						var other = (chan + rrand(1, n - 1)) % n;
-						sp.wait(rrand(0.2, 1.0));
-						sp.seq(phrase.(other, rrand(0.85, 1.15), rrand(0.2, 0.8)));
+						sp.par(Pseq([Pbind(\dur, Pseq([rrand(1.0, 3.0)]), \type, \rest),
+							phrase.(other, rrand(0.85, 1.15), rrand(0.4, 0.8))]));
 					};
-					sp.wait(rrand(0.3, 1.8));
+					sp.seq(phrase.(chan, size, far));
+					sp.wait(rrand(0.4, 2.5));
 				};
-				sp.wait(rrand(6, 25));
+				sp.wait(rrand(10, 40));
 			} { sp.wait(5) };
 		}
 	}));
