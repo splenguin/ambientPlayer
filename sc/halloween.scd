@@ -199,8 +199,8 @@ s.waitForBoot {
 			var syl = Impulse.ar(pulseRate) * gate;
 			var sylLen = 0.55 / pulseRate;
 			var env = EnvGen.ar(Env([0, 1, 0.7, 0], [0.2, 0.4, 0.4] * sylLen, [2, 0, -3]), syl);
-			var accent = Latch.ar(LFNoise1.kr(40).range(0.5, 1), syl);
-			var drift = Latch.ar(LFNoise1.kr(3).range(0.994, 1.006), chirp);
+			var accent = Latch.ar(LFNoise1.ar(40).range(0.5, 1), syl);
+			var drift = Latch.ar(LFNoise1.ar(3).range(0.994, 1.006), chirp);
 			var f = freq * drift * (1 - (env * 0.012));
 			var tone = SinOsc.ar(f) + (SinOsc.ar(f * 2) * 0.05) + (BPF.ar(WhiteNoise.ar, f, 0.04) * 1.5);
 			var active = LFNoise1.kr(Rand(0.01, 0.04)).range(-0.3, 1).clip(0, 1).lag(2);
