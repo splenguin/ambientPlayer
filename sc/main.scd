@@ -1,9 +1,9 @@
 // Pi entry point: starts the Halloween patch and lets the web page (or anything
 // that speaks OSC) control it on UDP port 57120.
 //
-//   /scene <name> [fade]   jump to a scene: clear fogRising deepFog leafWind creaking
+//   /scene <name> [fade]   jump to a scene: clear fogRising deepFog windy creaking
 //   /auto                  resume automatic scene changes
-//   /solo <layer>          one layer alone: crickets fog drone leaves spirits whispers creak owls
+//   /solo <layer>          one layer alone: crickets fog drone wind spirits whispers creak gate bell howl owls
 //   /trim <layer> <0..2>   turn one layer down or up in every scene
 //   /master <0..1>         overall level
 //   /start [fade]          fade the sound in
