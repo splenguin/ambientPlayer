@@ -139,7 +139,8 @@ s.waitForBoot {
 	}).add;
 
 	owlPaths.do { |p|
-		var voice = p.basename.findRegexp("^[A-Za-z]+")[0] !? (_[1]) ? "owl";
+		// Text before a dot is ignored, so "owls.owlA-10.wav" is owl owlA.
+		var voice = p.basename.splitext[0].split($.).last.findRegexp("^[A-Za-z]+")[0] !? (_[1]) ? "owl";
 		owlVoices[voice] = (owlVoices[voice] ? []).add(Buffer.readChannel(s, p, channels: [0]));
 	};
 	owlVoices.keysValuesDo { |v, bufs|
