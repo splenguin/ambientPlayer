@@ -12,7 +12,7 @@ echo "== Installing SuperCollider, JACK and git"
 echo "jackd2 jackd/tweak_rt_limits boolean true" | debconf-set-selections
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-  supercollider-server supercollider-language jackd2 zita-ajbridge git python3
+  supercollider-server supercollider-supernova supercollider-language jackd2 zita-ajbridge git python3
 usermod -aG audio "$RUN_USER"
 
 echo "== Settings"

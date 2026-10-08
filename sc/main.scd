@@ -50,6 +50,13 @@ if(device2.size > 0) {
 	"SC_JACK_DEFAULT_OUTPUTS".setenv(
 		"system:playback_1,system:playback_2,card2:playback_1,card2:playback_2");
 };
+// Engine: supernova (the multi-core server) when installed, unless
+// AMBIENT_ENGINE=scsynth. AMBIENT_THREADS sets how many cores it may use for
+// sound (default 3 of the Pi's 4, leaving one for JACK and the rest).
+if(envOr.("AMBIENT_ENGINE", "supernova") == "supernova" and: { File.exists("/usr/bin/supernova") }) {
+	Server.supernova;
+	s.options.threads = envOr.("AMBIENT_THREADS", "3").asInteger;
+} { Server.scsynth };
 ~currentScene = nil;
 (dir +/+ "halloween.scd").load;
 
@@ -137,7 +144,7 @@ Routine {
 			(~layers ? []).collect { |l| "\"%\"".format(l) }.join(", "),
 			(~sceneNames ? []).collect { |l| "\"%\"".format(l) }.join(", "),
 			(~layers ? []).collect { |l| "\"%\": %".format(l, trims[l] ? 1) }.join(", "),
-			(~layers ? []).select { |l| Ndef(l).paused }.collect { |l| "\"%\"".format(l) }.join(", "),
+			(~layers ? []).select { |l| Ndef((~partsOf ? { |x| [x] }).(l)[0]).paused }.collect { |l| "\"%\"".format(l) }.join(", "),
 			(~scenes ?? { () }).keys.asArray.sort.collect { |name|
 				"\"%\": {%}".format(name, ~scenes[name].keys.asArray.sort.collect { |k|
 					"\"%\": %".format(k, ~scenes[name][k].round(0.001)) }.join(", "))

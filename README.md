@@ -138,9 +138,13 @@ away, use Tailscale rather than forwarding a port.
 - **Power:** the 3B takes micro-USB, while the board's Pi output is USB-C. Use
   a short, thick USB-C to micro-USB cable. If `vcgencmd get_throttled` prints
   anything other than `throttled=0x0`, the Pi is seeing undervoltage.
-- **CPU:** SuperCollider's audio engine runs on one core. The page shows its
-  load. Above about 70% peak, expect dropouts. If that happens, lower the
-  cricket count in `halloween.scd` (`ground * 3`) first.
+- **CPU:** the player uses supernova, SuperCollider's multi-core engine, on 3
+  of the 4 cores (`AMBIENT_THREADS`). The layers run side by side and the
+  crickets are split per speaker. The page shows the engine's own load and
+  each Pi core's busy %. To go back to the single-core engine, set
+  `AMBIENT_ENGINE=scsynth` in `/etc/default/ambient` and
+  `sudo systemctl restart ambient-sc`. Layers at zero in a scene pause, and
+  JACK's unit sets the CPU governor to performance.
 - **Clicks:** the 3B's USB port shares its bus with Ethernet. If you hear
   clicks, set `AMBIENT_PERIOD=2048` in `/etc/default/ambient`.
 - **Wi-Fi:** the 3B only does 2.4 GHz.

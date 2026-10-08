@@ -49,6 +49,7 @@ DEFAULT_SETTINGS = {
 lock = threading.Lock()
 last_status = {}
 settings = {}
+pi_cpu = {"cores": []}  # busy % per CPU core, from /proc/stat, updated every 5 s
 
 
 # --- OSC -------------------------------------------------------------------
@@ -125,10 +126,29 @@ def in_window(now, on, off):
     return on <= t < off if on <= off else (t >= on or t < off)
 
 
+def read_proc_stat():
+    """Busy and total jiffies for each core."""
+    out = []
+    try:
+        for line in Path("/proc/stat").read_text().splitlines():
+            if line.startswith("cpu") and line[3:4].isdigit():
+                v = [int(x) for x in line.split()[1:]]
+                idle = v[3] + (v[4] if len(v) > 4 else 0)
+                out.append((sum(v) - idle, sum(v)))
+    except OSError:
+        pass
+    return out
+
+
 def background():
     """Re-sends settings whenever SuperCollider restarts, and runs the schedule."""
     seen_boot, was_on = None, None
+    prev = read_proc_stat()
     while True:
+        cur = read_proc_stat()
+        if len(cur) == len(prev):
+            pi_cpu["cores"] = [round(100 * (b1 - b0) / max(t1 - t0, 1)) for (b0, t0), (b1, t1) in zip(prev, cur)]
+        prev = cur
         st = read_status()
         if st.get("online") and st.get("boot") != seen_boot:
             time.sleep(3)  # let the patch finish building its layers
@@ -189,7 +209,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, (HERE / "index.html").read_bytes(), "text/html; charset=utf-8")
         elif self.path == "/api/status":
             with lock:
-                self._send(200, {"sc": read_status(), "settings": settings})
+                self._send(200, {"sc": read_status(), "settings": settings, "pi": pi_cpu})
         else:
             self._send(404, {"error": "not found"})
 

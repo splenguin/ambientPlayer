@@ -76,13 +76,17 @@ s.waitForBoot {
 	// before it fades back in. While ~resting (stopped, or a speaker test) they
 	// all pause.
 	var trimLevels = IdentityDictionary.new;
-	var synthLayers = { layers.select { |l| Ndef(l).source.isKindOf(Function) } };
+	// A layer can be built from several Ndefs ("parts") so it can spread over
+	// CPU cores: the crickets are one part per ground speaker.
+	var parts = IdentityDictionary.new;
+	var partsOf = { |l| parts[l] ? [l] };
+	var synthLayers = { layers.select { |l| Ndef(partsOf.(l)[0]).source.isKindOf(Function) } };
 	var audible = { |l| ((levels[(l ++ "Amp").asSymbol] ? 0) * (trimLevels[l] ? 1)) > 0.001 };
 	var updateSleep = { |delay = 0|
-		synthLayers.value.do { |l| if(~resting != true and: { audible.(l) }) { Ndef(l).resume } };
+		synthLayers.value.do { |l| if(~resting != true and: { audible.(l) }) { partsOf.(l).do { |p| Ndef(p).resume } } };
 		fork {
 			delay.wait;
-			synthLayers.value.do { |l| if(~resting == true or: { audible.(l).not }) { Ndef(l).pause } };
+			synthLayers.value.do { |l| if(~resting == true or: { audible.(l).not }) { partsOf.(l).do { |p| Ndef(p).pause } } };
 		};
 	};
 
@@ -180,15 +184,27 @@ s.waitForBoot {
 
 	s.sync;
 
+	// The layers run side by side in one group: on supernova (see main.scd) a
+	// ParGroup, so each layer can use a different CPU core. The mixer runs
+	// after them.
+	~layerGroup = if(Server.program.contains("supernova")) { ParGroup(s) } { Group(s) }.register(true);
+	~mixGroup = Group.after(~layerGroup).register(true);
+	parts[\crickets] = ground.collect { |g| ("crickets" ++ g).asSymbol };
+	layers.do { |l| partsOf.(l).do { |p| Ndef(p).parentGroup = ~layerGroup } };
+	Ndef(\mix).parentGroup = ~mixGroup;
+
 	// Crickets: the anchor. Around each ground speaker a field of them, some
 	// close and bright, most farther off and duller, each with its own pitch,
 	// pace and uneven rhythm; a pulse falls slightly in pitch and has a little
 	// rasp. Each comes and goes on its own. A faint tree cricket trills in the
 	// distance now and then. They all slow down as the scene gets colder (\tempo).
-	Ndef(\crickets, {
+	// Each ground speaker's field is its own Ndef (part), so they can run on
+	// different cores.
+	ground.do { |g| Ndef(parts[\crickets][g], {
 		var tempo = Lag.kr(\tempo.kr(1), 90);
 		var outs = Array.fill(n, { DC.ar(0) });
-		(ground * 7).do { |i|
+		7.do { |j|
+			var i = (j * ground) + g;   // the same voices as one big field, this speaker's share
 			var ch = i % ground;
 			var dist = if(i < (ground * 2), Rand(0, 0.3), Rand(0.4, 1));   // 2 close, 5 farther, per speaker
 			var freq = Rand(4200, 5200);
@@ -208,7 +224,7 @@ s.waitForBoot {
 			var sig = LPF.ar(tone * env * accent, dist.linexp(0, 1, 14000, 5000));
 			outs[ch] = outs[ch] + (sig * active * dist.linexp(0, 1, 0.12, 0.025) * Rand(0.8, 1.2));
 		};
-		ground.do { |ch|
+		[g].do { |ch|
 			var on = LFNoise1.kr(Rand(0.005, 0.015)).range(-1, 1).clip(0, 1).lag(5);
 			var f = Rand(2600, 3000), rate = Rand(45, 60) * tempo;
 			var pulse = Lag.ar(LFPulse.ar(rate * LFNoise2.kr(0.2).range(0.97, 1.03), 0, 0.5), 0.004);
@@ -216,7 +232,7 @@ s.waitForBoot {
 			outs[ch] = outs[ch] + (LPF.ar(trill * pulse, 5000) * on * 0.012);
 		};
 		outs
-	});
+	}) };
 
 	// Fog: a soft low roar with a little air on top. Its thickness is one
 	// slow wave that reaches speaker 0 first and speaker 2 half a minute later.
@@ -392,7 +408,7 @@ s.waitForBoot {
 		// poisoning the reverb and taking every other layer with it.
 		var clean = { |x| \Sanitize.asClass !? { |c| c.ar(x) } ? x };
 		var sig = layers.collect { |name|
-			clean.(Ndef.ar(name, n)) * VarLag.kr((name ++ "Amp").asSymbol.kr(0), fade, warp: \sin)
+			clean.(partsOf.(name).collect { |p| Ndef.ar(p, n) }.sum) * VarLag.kr((name ++ "Amp").asSymbol.kr(0), fade, warp: \sin)
 				* Lag.kr((name ++ "Trim").asSymbol.kr(1), 2)
 				* if(name == \owls) { Lag.kr(\birds.kr(1), 4) } { 1 }
 		}.sum;
@@ -438,7 +454,7 @@ s.waitForBoot {
 		~currentScene = name;
 		levels.putAll(sc);
 		Ndef(\mix).set(\fade, fade ? fadeTime, *sc.asKeyValuePairs);
-		Ndef(\crickets).set(\tempo, sc[\tempo]);
+		partsOf.(\crickets).do { |p| Ndef(p).set(\tempo, sc[\tempo]) };
 		updateSleep.((fade ? fadeTime) + 2);
 	};
 
@@ -452,6 +468,7 @@ s.waitForBoot {
 		updateSleep.(4);
 	};
 	~updateSleep = updateSleep;
+	~partsOf = partsOf;
 	// Scene editing from the web page: change one value of a scene; if that
 	// scene is playing, it glides there over a couple of seconds.
 	~scenes = scenes;
@@ -461,7 +478,7 @@ s.waitForBoot {
 			if(~currentScene == name) {
 				levels[key] = value;
 				Ndef(\mix).set(\fade, 2, key, value);
-				if(key == \tempo) { Ndef(\crickets).set(\tempo, value) };
+				if(key == \tempo) { partsOf.(\crickets).do { |p| Ndef(p).set(\tempo, value) } };
 				updateSleep.(4);
 			};
 		};

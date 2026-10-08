@@ -152,7 +152,7 @@ function render() {
   const sc = st.sc, set = st.settings;
   $('dot').className = 'dot' + (sc.online ? ' on' : '');
   $('statusText').innerHTML = sc.online
-    ? `${sc.test >= 0 ? 'Speaker test' : sc.playing ? 'Playing' : 'Stopped'} · scene <b>${label(sc.scene || '–')}</b>${sc.auto ? ' (drifting)' : ' (held)'} · CPU ${sc.cpuAvg}% avg, ${sc.cpuPeak}% peak`
+    ? `${sc.test >= 0 ? 'Speaker test' : sc.playing ? 'Playing' : 'Stopped'} · scene <b>${label(sc.scene || '–')}</b>${sc.auto ? ' (drifting)' : ' (held)'} · sound engine ${sc.cpuAvg}%${(st.pi && st.pi.cores.length) ? ` · Pi cores ${st.pi.cores.join(' / ')}%` : ''}`
     : 'SuperCollider is not running';
   if (!dragging) {
     $('master').value = set.master; $('masterVal').textContent = (+set.master).toFixed(2);
