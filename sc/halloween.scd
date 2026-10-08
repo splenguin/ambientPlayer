@@ -104,11 +104,11 @@ s.waitForBoot {
 		Out.ar(out + to, sig * glide.sqrt);
 	}).add;
 
-	// A whispered phrase: no words and no pitch, just breath. Broad, fixed
-	// bands of noise (no sweeping filters, so nothing whistles) swell and fade
-	// in soft syllable-sized puffs a few times a second, bunched into clusters
-	// like muttered words. Some puffs lean toward breathy "h", some toward a
-	// hissed "s". Every edge is smooth, so nothing clicks. Sometimes the phrase
+	// A whispered phrase: no words and no pitch, just breath. Broad, fixed,
+	// low bands of noise (mouth and throat, not air; no sweeping filters, so
+	// nothing whistles) swell and fade in soft syllable-sized puffs two or
+	// three times a second, bunched into clusters like muttered words. Some
+	// puffs carry a little more hiss. Every edge is smooth, so nothing clicks. Sometimes the phrase
 	// drifts from one speaker to another; \far makes it quieter and duller.
 	SynthDef(\whisper, { |out = 0, chan = 0, to = 0, len = 2, amp = 0.2, rate = 5, far = 0, tone = 1|
 		var env = EnvGen.ar(Env([0, 1, 1, 0], [0.3, max(len - 0.7, 0.1), 0.4], \sin), doneAction: 2);
@@ -117,12 +117,12 @@ s.waitForBoot {
 		var syl = EnvGen.ar(Env([0, 1, 0], [0.45, 0.55] / rate, \sin), trig * (1 - gap));
 		var peak = Latch.ar(TRand.ar(0.35, 1, trig), trig);
 		var s = Latch.ar(TRand.ar(0, 1, trig), trig).squared;      // how hissy this puff is
-		var noise = (WhiteNoise.ar * 0.5) + (PinkNoise.ar * 0.5);
-		var breath = BPF.ar(noise, 1300 * tone, 1.6);
-		var hiss = BPF.ar(WhiteNoise.ar, 4500 * tone, 1.2) * 0.6;
-		var sig = ((breath * (1 - (s * 0.7))) + (hiss * s)) * syl * peak;
+		var noise = (BrownNoise.ar * 0.4) + (PinkNoise.ar * 0.6);
+		var mouth = BPF.ar(noise, 550 * tone, 1.8) + (BPF.ar(noise, 1100 * tone, 1.5) * 0.6);
+		var hiss = BPF.ar(PinkNoise.ar, 2600 * tone, 1.2) * 0.35;
+		var sig = ((mouth * (1 - (s * 0.4))) + (hiss * s * 0.6)) * syl * peak;
 		var pos = Line.kr(0, 1, len), same = (chan - to).abs < 0.5;
-		sig = HPF.ar(LPF.ar(sig, far.linexp(0, 1, 9000, 3000)), 300) * env * amp * far.linlin(0, 1, 1, 0.45);
+		sig = HPF.ar(LPF.ar(sig, far.linexp(0, 1, 4500, 2000)), 150) * env * amp * far.linlin(0, 1, 1, 0.45);
 		Out.ar(out + chan, sig * Select.kr(same, [(1 - pos).sqrt, 1]));
 		Out.ar(out + to, sig * pos.sqrt * (1 - same));
 	}).add;
@@ -269,9 +269,9 @@ s.waitForBoot {
 	Ndef(\whispers).ar(n);
 	Ndef(\whispers, Pspawner({ |sp|
 		var phrase = { |chan, size, far|
-			var len = rrand(1.0, 3.5);
+			var len = rrand(2.0, 5.0);
 			var to = if(0.3.coin) { (chan + [-1, 1].choose) % n } { chan };
-			Pbind(\instrument, \whisper, \chan, chan, \to, to, \len, len, \rate, rrand(4.0, 7.0),
+			Pbind(\instrument, \whisper, \chan, chan, \to, to, \len, len, \rate, rrand(2.0, 3.5),
 				\tone, size, \far, far, \amp, rrand(0.35, 0.6), \dur, Pseq([len]))
 		};
 		sp.wait(rrand(5, 20));
