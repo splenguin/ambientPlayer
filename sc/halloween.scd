@@ -135,11 +135,12 @@ s.waitForBoot {
 		var peak = Lag.ar(Latch.ar(TRand.ar(0.4, 1, trig), trig), 0.2);
 		var s = Lag.ar(Latch.ar(TRand.ar(0, 1, trig), trig).squared, 0.2);   // how hissy this puff is
 		var swell = LFNoise2.kr(0.5).range(0.45, 1);              // the phrase rises and sinks
-		// The mouth's shape glides smoothly between an open "haaa" (1) and a
-		// rounded "hooo" (0), moving with the syllables and drifting slowly
-		// underneath. Soft, wide resonances follow it, which gives the gentle
-		// phaser-like sweep of real whispering without any whistle or pitch.
-		var open = ((LFNoise2.kr(rate * 0.5) * 0.65) + (LFNoise2.kr(0.2) * 0.35)).range(0, 1).lag(0.05);
+		// Each syllable has its own mouth shape somewhere between an open
+		// "haaa" (1) and a rounded "hooo" (0), always well away from the one
+		// before (it steps 0.3 to 0.7 of the way round), and moves there
+		// quickly as the syllable starts, so nothing sweeps across syllables.
+		// Soft, wide resonances follow it: no whistle, no pitch.
+		var open = Lag.ar(Integrator.ar(trig * TRand.ar(0.3, 0.7, trig), 1).wrap(0, 1), 0.04);
 		var f1 = open.linexp(0, 1, 320, 820) * tone;
 		var f2 = open.linexp(0, 1, 780, 1250) * tone * LFNoise2.kr(0.7).range(0.94, 1.06);
 		var f3 = open.linexp(0, 1, 2250, 2550) * tone;
