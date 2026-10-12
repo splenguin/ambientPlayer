@@ -32,7 +32,7 @@ for d in "$AMBIENT_DEVICE" $AMBIENT_DEVICE2; do
 done
 
 section "JACK connections"
-jack_lsp -c 2>&1 | head -40
+if command -v jack_lsp >/dev/null; then jack_lsp -c 2>&1 | head -40; else echo "(jack_lsp not installed: sudo apt install jack-example-tools)"; fi
 
 section "SuperCollider status"
 cat /run/ambient/status.json 2>/dev/null | head -c 600; echo

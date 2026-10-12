@@ -138,12 +138,12 @@ away, use Tailscale rather than forwarding a port.
 - **Power:** the 3B takes micro-USB, while the board's Pi output is USB-C. Use
   a short, thick USB-C to micro-USB cable. If `vcgencmd get_throttled` prints
   anything other than `throttled=0x0`, the Pi is seeing undervoltage.
-- **CPU:** the player uses supernova, SuperCollider's multi-core engine, on 3
-  of the 4 cores (`AMBIENT_THREADS`). The layers run side by side and the
-  crickets are split per speaker. The page shows the engine's own load and
-  each Pi core's busy %. To go back to the single-core engine, set
-  `AMBIENT_ENGINE=scsynth` in `/etc/default/ambient` and
-  `sudo systemctl restart ambient-sc`. Layers at zero in a scene pause, and
+- **CPU:** the player uses scsynth, which runs on one core. supernova, the
+  multi-core engine, can be tried with `AMBIENT_ENGINE=supernova` in
+  `/etc/default/ambient` (it uses `AMBIENT_THREADS` cores), but on the Pi 3B it
+  once stopped after logging "scheduler queue is full". The page shows the
+  engine's own load and each Pi core's busy %. If the sound server ever stops,
+  the player restarts itself. Layers at zero in a scene pause, and
   JACK's unit sets the CPU governor to performance.
 - **Clicks:** the 3B's USB port shares its bus with Ethernet. If you hear
   clicks, set `AMBIENT_PERIOD=2048` in `/etc/default/ambient`.

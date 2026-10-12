@@ -51,10 +51,10 @@ if(device2.size > 0) {
 	"SC_JACK_DEFAULT_OUTPUTS".setenv(
 		"system:playback_1,system:playback_2,card2:playback_1,card2:playback_2");
 };
-// Engine: supernova (the multi-core server) when installed, unless
-// AMBIENT_ENGINE=scsynth. AMBIENT_THREADS sets how many cores it may use for
+// Engine: scsynth (one core) unless AMBIENT_ENGINE=supernova (multi-core).
+// supernova crashed on the Pi after "scheduler queue is full", so it is opt-in. AMBIENT_THREADS sets how many cores it may use for
 // sound (default 3 of the Pi's 4, leaving one for JACK and the rest).
-if(envOr.("AMBIENT_ENGINE", "supernova") == "supernova" and: { File.exists("/usr/bin/supernova") }) {
+if(envOr.("AMBIENT_ENGINE", "scsynth") == "supernova" and: { File.exists("/usr/bin/supernova") }) {
 	Server.supernova;
 	s.options.threads = envOr.("AMBIENT_THREADS", "3").asInteger;
 } { Server.scsynth };
@@ -99,6 +99,9 @@ OSCdef(\ambBirds, { |msg|
 
 // Speaker test: each speaker beeps its number (1 to 4 beeps), then plays a
 // burst of soft noise. The ambience is muted while the test runs.
+// If the sound server ever dies, quit so systemd restarts the whole player
+// instead of leaving it silent.
+s.doWhenBooted { ServerQuit.add({ "sound server stopped; restarting the player".postln; 1.exit }, s) };
 s.doWhenBooted {
 	SynthDef(\speakerBeep, { |out = 0|
 		var env = EnvGen.ar(Env.linen(0.01, 0.15, 0.04), doneAction: 2);
