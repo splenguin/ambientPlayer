@@ -11,6 +11,7 @@ sc/halloween.scd     the sound: crickets, fog, drone, wind, spirits, whispers, c
 sc/main.scd          Pi entry point: loads the patch, listens for OSC, writes status
 tools/               name-usb-cards.sh: fixed names for USB sound cards
                      diagnose.sh: load, routing and logs to paste when something's wrong
+                     setup-wifi.sh: save one or two Wi-Fi networks (wifi-pick.sh picks the stronger)
 web/server.py        control page and its API (Python standard library only)
 web/index.html       the page itself
 systemd/*.service    jackd, second-card bridge, sclang and the web page, started at boot
@@ -148,6 +149,21 @@ away, use Tailscale rather than forwarding a port.
 - **Clicks:** the 3B's USB port shares its bus with Ethernet. If you hear
   clicks, set `AMBIENT_PERIOD=2048` in `/etc/default/ambient`.
 - **Wi-Fi:** the 3B only does 2.4 GHz.
+
+## Wi-Fi
+
+To join whichever of two networks is stronger, run this on the Pi and type
+each password when asked:
+```
+sudo ~/ambientPlayer/tools/setup-wifi.sh "SplenguiNet_2.4GHz_EXT" "Other network"
+```
+A timer checks every 2 minutes and moves to the other network only when it is
+clearly stronger, so it doesn't flip back and forth. Each move drops Wi-Fi for
+a few seconds (the sound keeps playing). `journalctl -u ambient-wifi-pick`
+shows each move. With just one network name, it saves that one and turns the
+timer off. If a network was saved before (for example by Raspberry Pi Imager),
+pressing Enter at the password prompt keeps its saved password, and running it
+over SSH won't drop you. Passwords stay on the Pi, never in this repo.
 
 ## Logs
 
