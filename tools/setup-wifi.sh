@@ -1,7 +1,9 @@
 #!/bin/bash
 # Saves one or two Wi-Fi networks on the Pi (NetworkManager, Bookworm/Trixie).
-# With two, a timer checks every 2 minutes and moves to the other network when
-# it is clearly stronger. Passwords are typed here and stay on the Pi, in
+# A timer checks every 2 minutes: it rejoins if the Pi has dropped off (the 3B
+# can fail a handshake on a weak signal, after which NetworkManager stops
+# trying), and with two networks it moves to the other one when it is clearly
+# stronger. Passwords are typed here and stay on the Pi, in
 # /etc/NetworkManager/system-connections; they never go in this repo.
 #   sudo ./tools/setup-wifi.sh "SplenguiNet_2.4GHz_EXT"                 # just this one
 #   sudo ./tools/setup-wifi.sh "SplenguiNet_2.4GHz_EXT" "Other network" # whichever is stronger
@@ -47,6 +49,11 @@ for ssid in "$@"; do
   if [ -n "$pw" ]; then
     nmcli connection modify "$name" wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$pw"
   fi
+  # The 3B's Wi-Fi chip handles protected management frames badly, which shows
+  # up as handshake timeouts with some routers and extenders.
+  if [ "$(nmcli -g 802-11-wireless-security.key-mgmt connection show "$name")" = wpa-psk ]; then
+    nmcli connection modify "$name" wifi-sec.pmf disable
+  fi
   echo "Saved $ssid as $name"
   n=$((n + 1))
 done
@@ -58,17 +65,16 @@ while IFS=: read -r cname ctype; do
     nmcli connection modify "$cname" connection.autoconnect-priority 0
 done < <(nmcli -t -f NAME,TYPE connection show)
 
-if [ $# -eq 2 ]; then
-  cat > /etc/systemd/system/ambient-wifi-pick.service <<UNIT
+cat > /etc/systemd/system/ambient-wifi-pick.service <<UNIT
 [Unit]
-Description=Move to the stronger of the two saved Wi-Fi networks
+Description=Rejoin Wi-Fi, or move to the stronger saved network
 After=NetworkManager.service
 
 [Service]
 Type=oneshot
 ExecStart=$DIR/wifi-pick.sh
 UNIT
-  cat > /etc/systemd/system/ambient-wifi-pick.timer <<UNIT
+cat > /etc/systemd/system/ambient-wifi-pick.timer <<UNIT
 [Unit]
 Description=Check Wi-Fi signal every 2 minutes
 
@@ -79,14 +85,9 @@ OnUnitActiveSec=2min
 [Install]
 WantedBy=timers.target
 UNIT
-  systemctl daemon-reload
-  systemctl enable --now ambient-wifi-pick.timer
-  echo "Picking the stronger network every 2 minutes (journalctl -u ambient-wifi-pick)."
-else
-  systemctl disable --now ambient-wifi-pick.timer 2>/dev/null || true
-  rm -f /etc/systemd/system/ambient-wifi-pick.{service,timer}
-  systemctl daemon-reload
-fi
+systemctl daemon-reload
+systemctl enable --now ambient-wifi-pick.timer
+echo "Checking Wi-Fi every 2 minutes (journalctl -u ambient-wifi-pick)."
 
 echo
 nmcli -f NAME,AUTOCONNECT-PRIORITY,DEVICE connection show | grep -E 'NAME|wifi|wlan' || true

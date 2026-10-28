@@ -166,13 +166,15 @@ each password when asked:
 ```
 sudo ~/ambientPlayer/tools/setup-wifi.sh "SplenguiNet_2.4GHz_EXT" "Other network"
 ```
-A timer checks every 2 minutes and moves to the other network only when it is
-clearly stronger, so it doesn't flip back and forth. Each move drops Wi-Fi for
-a few seconds (the sound keeps playing). `journalctl -u ambient-wifi-pick`
-shows each move. With just one network name, it saves that one and turns the
-timer off. If a network was saved before (for example by Raspberry Pi Imager),
-pressing Enter at the password prompt keeps its saved password, and running it
-over SSH won't drop you. Passwords stay on the Pi, never in this repo.
+A timer checks every 2 minutes. If the Pi has dropped off Wi-Fi, it rejoins
+(the 3B can fail a handshake on a weak signal, and NetworkManager then stops
+trying on its own). With two networks, it also moves to the other one when that
+one is clearly stronger, so it doesn't flip back and forth. Each move drops
+Wi-Fi for a few seconds (the sound keeps playing). `journalctl -u
+ambient-wifi-pick` shows each rejoin, move and weak-signal warning. If a
+network was saved before (for example by Raspberry Pi Imager), pressing Enter
+at the password prompt keeps its saved password, and running it over SSH
+won't drop you. Passwords stay on the Pi, never in this repo.
 
 ## Logs
 

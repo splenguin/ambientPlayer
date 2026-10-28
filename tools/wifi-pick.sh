@@ -1,8 +1,8 @@
 #!/bin/bash
-# Run by ambient-wifi-pick.timer (set up by setup-wifi.sh). Connects to
-# whichever saved ambient-wifi-* network is strongest, but only leaves the
-# current one when the other is MARGIN points stronger (signal is 0-100), so
-# it doesn't flip back and forth.
+# Run by ambient-wifi-pick.timer (set up by setup-wifi.sh). Rejoins Wi-Fi if
+# the Pi has dropped off, choosing whichever saved ambient-wifi-* network is
+# strongest. Only leaves the current one when the other is MARGIN points
+# stronger (signal is 0-100), so it doesn't flip back and forth.
 set -uo pipefail
 MARGIN=15
 IF=wlan0
@@ -34,6 +34,7 @@ if [ -z "$current" ]; then
 elif [ "$best" != "$current" ] && [ "${signal[$best]}" -ge $(( ${signal[$current]:-0} + MARGIN )) ]; then
   echo "Moving from $current (${signal[$current]:-0}) to $best (${signal[$best]})"
 else
+  [ "${signal[$current]:-0}" -ge 40 ] || echo "Weak signal on $current (${signal[$current]:-0})"
   exit 0
 fi
 nmcli connection up "${conn_for[$best]}" ifname "$IF"
