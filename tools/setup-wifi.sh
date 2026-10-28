@@ -12,7 +12,7 @@
 set -euo pipefail
 [ "$(id -u)" -eq 0 ] || exec sudo "$0" "$@"
 command -v nmcli >/dev/null || { echo "NetworkManager (nmcli) not found; this needs Bookworm or later."; exit 1; }
-[ $# -ge 1 ] && [ $# -le 2 ] || { sed -n '2,9p' "$0"; exit 1; }
+[ $# -ge 1 ] && [ $# -le 2 ] || { sed -n '2,11p' "$0"; exit 1; }
 
 DIR=$(cd "$(dirname "$0")" && pwd)
 nmcli radio wifi on
