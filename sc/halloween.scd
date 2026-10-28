@@ -9,7 +9,8 @@
 //   Owls, from your recordings in ambientSounds/owls, call only from the
 //   elevated speakers. Files are grouped into owls by name prefix (owlA_01.wav,
 //   owlA_02.wav... are owl "owlA"), and each elevated speaker can be given
-//   one owl, so two owls can call back and forth across the yard.
+//   one owl, so two owls can call back and forth across the yard. With no
+//   elevated speaker switched on (~setSpeakers), they call from the ground ones.
 //
 // Run: open in the SuperCollider IDE, click inside the outer parentheses,
 // press Ctrl+Enter. Ctrl+. stops everything.
@@ -18,7 +19,8 @@
 //   ~scene.(\deepFog);        jump to a scene (normal slow fade)
 //   ~scene.(\clear, 5);       ...with a 5 second fade instead
 //   ~solo.(\drone);           hear one layer alone (\crickets \fog \drone \wind \spirits \whispers \creak \gate \bell \howl \owls)
-//   ~birds.(false);           turn the birds off (true to bring them back)
+//   ~birds.(false);           turn the owls off (true to bring them back)
+//   ~setSpeakers.([true, false, false, true]);  only speakers 1 and 4 (one per output)
 //   ~auto.();                 resume automatic scene changes after ~scene/~solo
 //   ~trim.(\fog, 0.5);        turn one layer down (or up, max 2) in every scene
 //
@@ -70,6 +72,35 @@ s.waitForBoot {
 	var owlPaths = loadFolder.("owls");
 	var owlChans = { |voice|                     // patch channels this owl may use
 		upRoles.collect { |r, k| if(r == "birds" or: { r == voice.toLower }) { ground + k } }.reject(_.isNil)
+	};
+	// Which real outputs each patch channel plays on, given which speakers are
+	// switched on (one true/false per output). A channel whose speaker is off
+	// moves, a little quieter, to the nearest speaker of the same kind that is
+	// on (ground or tree), or to one of the other kind if none of its own is
+	// on, so with one speaker on, everything plays there. The owls drop to the
+	// ground speakers when no tree speaker is on. Flat n x outputs gains.
+	var chanOut = (groundOuts.extend(ground, nil)) ++ upOuts;   // patch channel -> real output
+	var routeFor = { |on|
+		var m = roles.size;
+		var route = Array.fill(n * m, 0);
+		var onOuts = (0 .. m - 1).select { |o| on[o] ? true };
+		var onGround = groundOuts.select { |o| onOuts.includes(o) };
+		var onUp = upOuts.select { |o| onOuts.includes(o) };
+		n.do { |c|
+			var o = chanOut[c], isUp = c >= ground;
+			var k = if(isUp) { c - ground } { c };   // position among its own kind
+			var own = if(isUp) { onUp } { onGround }, other = if(isUp) { onGround } { onUp };
+			var kind = if(isUp) { upOuts } { groundOuts };
+			case
+			{ o.notNil and: { onOuts.includes(o) } } { route[(c * m) + o] = 1 }
+			{ own.notEmpty } {
+				// nearest along the walking order (it wraps round the yard)
+				var dist = { |x| var d = (kind.indexOf(x) - k).abs; min(d, kind.size - d) };
+				route[(c * m) + own.minItem(dist)] = 0.7
+			}
+			{ other.notEmpty } { route[(c * m) + other.wrapAt(k)] = 0.7 };
+		};
+		route
 	};
 	var levels = IdentityDictionary.new;         // current scene levels, read by the event layers
 	var scenes, next, applyScene, sceneDefaults;
@@ -524,11 +555,11 @@ s.waitForBoot {
 		// \boost (dB) lifts the whole mix to suit the amps; the limiter catches peaks.
 		sig = Limiter.ar(LeakDC.ar(sig) * Lag.kr(\master.kr(1), 1) * Lag.kr(\boost.kr(0), 1).dbamp, 0.9);
 		if(desk.not) {
-			// each patch channel back to its real output
-			var outs = Array.fill(roles.size, { Silent.ar });
-			groundOuts.do { |o, i| outs[o] = sig[i] };
-			upOuts.do { |o, k| outs[o] = sig[ground + k] };
-			outs
+			// each patch channel to its real output, or, when that speaker is
+			// switched off, to a speaker that is on (see ~setSpeakers)
+			var m = roles.size;
+			var route = \route.kr(routeFor.(true ! m)).clump(m);
+			m.collect { |o| n.collect { |c| sig[c] * Lag.kr(route[c][o], 3) }.sum }
 		} {
 			// desk preview: ground speakers spread left to right, trees centre
 			var mix = groundOuts.size.collect { |i|
@@ -594,6 +625,16 @@ s.waitForBoot {
 	};
 	~resetScene = { |name| sceneDefaults[name] !? { |d| d.keysValuesDo { |k, v| ~setScene.(name, k, v) } } };
 	~birds = { |on| Ndef(\mix).set(\birds, if(on) { 1 } { 0 }) };
+	// Switch speakers on or off (one true/false per output); at least one
+	// stays on. Everything glides to the speakers that are on over 3 seconds.
+	~speakersOn = true ! roles.size;
+	~setSpeakers = { |on|
+		on = roles.size.collect { |o| on[o] ? true };
+		if(on.includes(true)) {
+			~speakersOn = on;
+			if(desk.not) { Ndef(\mix).set(\route, routeFor.(on)) };
+		};
+	};
 	~owlVoices = owlVoices.collect(_.size);       // voice -> number of recordings
 	~owlCount = owlVoices.values.collect(_.size).sum ? 0;
 	~roles = roles;

@@ -101,11 +101,20 @@ which the installer clones to `~/ambientSounds`. Files are grouped into owls by
 the letters at the start of their names, so `owlA_01.wav` and `owlA 2.wav`
 are both owl `owlA`. An owl calls a few times from its own speaker, and
 sometimes the other owl answers from its speaker. An owl with no speaker
-assigned stays silent. **Birds** on the control page turns all of them on or
+assigned stays silent. **Owls** on the control page turns all of them on or
 off, and the page lists each speaker's role and the owls it found.
 
 After changing roles, run `sudo systemctl restart ambient-sc`. To add
 recordings, commit them to ambientSounds and press **Update from GitHub**.
+
+### Switching speakers on and off
+
+Under **Speakers** on the control page, untick a speaker to switch it off, or
+press **Only this** to hear everything from one speaker. Sound meant for a
+speaker that is off moves, a little quieter, to the nearest speaker that is on
+(ground sounds to a ground speaker, tree sounds to a tree speaker when one is
+on). With no tree speaker on, the owls call from the ground speakers. At least
+one speaker always stays on, and the choice is remembered.
 
 ### Speaker test
 
@@ -128,7 +137,7 @@ open `~/ambientPlayer` directly. After editing there, run
 
 `sc/main.scd` takes OSC on UDP port 57120: `/scene deepFog`, `/auto`,
 `/solo drone`, `/trim fog 0.5`, `/master 0.6`, `/start 10`, `/stop 10`,
-`/birds 0`, `/test 2`.
+`/birds 0` (owls off), `/speakers 1 0 0 0` (speaker 1 alone), `/test 2`.
 Any OSC app (TouchOSC, Open Stage Control) can send these.
 
 The web page has no password. Keep it on your home network. For access from

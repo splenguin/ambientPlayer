@@ -11,7 +11,10 @@
 //   /sceneSet <scene> <key> <value>  change one value of a scene, e.g. fogAmp or verb
 //   /sceneReset <scene>    put a scene back to its original values
 //   /boost <0..24>         extra gain in dB before the limiter (default 0)
-//   /birds <0|1>           birds (owls) on the elevated speakers off or on
+//   /birds <0|1>           owls off or on
+//   /speakers <0|1> ...    which speakers are on, one value per output, e.g.
+//                          /speakers 1 0 0 0 for speaker 1 alone. Sound meant
+//                          for a speaker that is off plays on one that is on.
 //   /test <n>              speaker test: n = 1..N repeats one speaker, 0 cycles
 //                          through all of them, -1 ends the test
 //
@@ -96,6 +99,9 @@ OSCdef(\ambBirds, { |msg|
 	birds = num.(msg[1], 1) > 0;
 	~birds.(birds);
 }, '/birds');
+OSCdef(\ambSpeakers, { |msg|
+	~setSpeakers.(msg[1..].collect { |x| num.(x, 1) > 0 });
+}, '/speakers');
 
 // Speaker test: each speaker beeps its number (1 to 4 beeps), then plays a
 // burst of soft noise. The ambience is muted while the test runs.
@@ -141,14 +147,14 @@ OSCdef(\ambTest, { |msg|
 Routine {
 	loop {
 		var esc = { |x| x.asString.replace("\\", "\\\\").replace("\"", "\\\"") };
-		var json = "{\"boot\": %, \"scene\": \"%\", \"auto\": %, \"playing\": %, \"master\": %, \"boost\": %, \"outputs\": %, \"speakers\": [%], \"voices\": {%}, \"birds\": %, \"owls\": %, \"test\": %, \"cpuAvg\": %, \"cpuPeak\": %, \"layers\": [%], \"scenes\": [%], \"trims\": {%}, \"paused\": [%], \"sceneValues\": {%}}";
+		var json = "{\"boot\": %, \"scene\": \"%\", \"auto\": %, \"playing\": %, \"master\": %, \"boost\": %, \"outputs\": %, \"speakers\": [%], \"voices\": {%}, \"birds\": %, \"on\": [%], \"owls\": %, \"test\": %, \"cpuAvg\": %, \"cpuPeak\": %, \"layers\": [%], \"scenes\": [%], \"trims\": {%}, \"paused\": [%], \"sceneValues\": {%}}";
 		var f;
 		json = json.format(
 			bootTime, esc.(~currentScene ? ""), Tdef(\scenes).isPlaying, playing, master, boost,
 			~outputs,
 			(~roles ? []).collect { |r| "\"%\"".format(esc.(r)) }.join(", "),
 			(~owlVoices ?? { () }).asAssociations.collect { |a| "\"%\": %".format(esc.(a.key), a.value) }.join(", "),
-			birds, ~owlCount ? 0, testing, (s.avgCPU ? 0).round(0.1), (s.peakCPU ? 0).round(0.1),
+			birds, (~speakersOn ? []).join(", "), ~owlCount ? 0, testing, (s.avgCPU ? 0).round(0.1), (s.peakCPU ? 0).round(0.1),
 			(~layers ? []).collect { |l| "\"%\"".format(l) }.join(", "),
 			(~sceneNames ? []).collect { |l| "\"%\"".format(l) }.join(", "),
 			(~layers ? []).collect { |l| "\"%\": %".format(l, trims[l] ? 1) }.join(", "),

@@ -42,7 +42,8 @@ SC_ADDR = ("127.0.0.1", 57120)
 DEFAULT_SETTINGS = {
     "master": 0.8,
     "boost": 0.0,  # dB before the limiter
-    "birds": True,
+    "owls": True,  # was "birds"; renamed so an old "off" doesn't keep the owls silent
+    "speakers": [],  # on/off per output; empty = all on
     "trims": {},
     "scenes": {},  # scene -> {key: value}, edits on top of the patch's own values
     "schedule": {"enabled": False, "on": "18:30", "off": "23:30"},
@@ -113,10 +114,12 @@ def read_status():
 
 
 def push_settings():
-    """Send saved master, trims and scene edits to SuperCollider (after it (re)starts)."""
+    """Send saved master, trims, owls, speakers and scene edits to SuperCollider (after it (re)starts)."""
     send_osc("/master", float(settings["master"]))
     send_osc("/boost", float(settings["boost"]))
-    send_osc("/birds", int(bool(settings["birds"])))
+    send_osc("/birds", int(bool(settings["owls"])))
+    if settings["speakers"]:
+        send_osc("/speakers", *[int(bool(x)) for x in settings["speakers"]])
     for layer, amp in settings["trims"].items():
         send_osc("/trim", layer, float(amp))
     for scene, values in settings["scenes"].items():
@@ -244,9 +247,14 @@ class Handler(BaseHTTPRequestHandler):
                 if "boost" in req:
                     settings["boost"] = min(max(float(req["boost"]), 0.0), 24.0)
                     send_osc("/boost", settings["boost"])
-                if "birds" in req:
-                    settings["birds"] = bool(req["birds"])
-                    send_osc("/birds", int(settings["birds"]))
+                if "owls" in req:
+                    settings["owls"] = bool(req["owls"])
+                    send_osc("/birds", int(settings["owls"]))
+                if "speakers" in req:
+                    on = [bool(x) for x in req["speakers"]][:16]
+                    if any(on):
+                        settings["speakers"] = on
+                        send_osc("/speakers", *[int(x) for x in on])
                 if "trim" in req:
                     layer, amp = str(req["trim"][0]), min(max(float(req["trim"][1]), 0.0), 2.0)
                     settings["trims"][layer] = amp

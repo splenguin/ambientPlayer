@@ -63,8 +63,11 @@
 
 <section>
   <h2>Speakers</h2>
-  <div class="row"><label style="width:auto"><input type="checkbox" id="birdsOn"> Birds on the elevated speakers</label></div>
-  <div style="color:var(--dim);font-size:14px" id="speakerInfo"></div>
+  <div style="color:var(--dim);font-size:14px">Only the speakers ticked here play. Sound meant for one that is off moves to the nearest one that is on, so with a single speaker on you hear everything from it.</div>
+  <div id="spkRows"></div>
+  <div class="row"><button id="allSpk">All on</button></div>
+  <div class="row"><label style="width:auto"><input type="checkbox" id="owlsOn"> Owls</label></div>
+  <div style="color:var(--dim);font-size:14px">Owls call from the tree speakers, or from the ground speakers when no tree speaker is on.</div>
   <div class="row" style="color:var(--dim);font-size:14px" id="owlInfo"></div>
   <h2 style="margin-top:14px">Speaker test</h2>
   <div style="color:var(--dim);font-size:14px">Each speaker beeps its number, then plays a burst of noise. The ambience pauses while testing.</div>
@@ -135,6 +138,20 @@ function build() {
     solo.onclick = () => cmd('solo', l);
     $('layers').appendChild(row);
   });
+  $('spkRows').innerHTML = '';
+  (sc.speakers || []).forEach((role, i) => {
+    const row = document.createElement('div'); row.className = 'row';
+    row.innerHTML = `<label style="width:auto;flex:1"><input type="checkbox"> Speaker ${i + 1} · ${role === 'ground' ? 'ground' : 'tree (' + role + ')'}</label><button>Only this</button>`;
+    const [box, only] = [row.querySelector('input'), row.querySelector('button')];
+    box.dataset.spk = i;
+    box.onchange = () => {
+      const on = speakersOn(); on[i] = box.checked;
+      if (!on.includes(true)) { box.checked = true; return; }  // keep at least one on
+      setSpeakers(on);
+    };
+    only.onclick = () => setSpeakers(speakersOn().map((_, k) => k === i));
+    $('spkRows').appendChild(row);
+  });
   $('testBtns').innerHTML = '';
   const tests = [[0, 'Test all']];
   for (let i = 1; i <= (sc.outputs || 2); i++) tests.push([i, String(i)]);
@@ -164,8 +181,11 @@ function render() {
       r.value = v; r.nextElementSibling.textContent = (+v).toFixed(2);
     });
   }
-  $('birdsOn').checked = set.birds !== false;
-  $('speakerInfo').textContent = (sc.speakers || []).map((r, i) => `${i + 1}: ${r}`).join(' · ');
+  $('owlsOn').checked = set.owls !== false;
+  const on = speakersOn();
+  document.querySelectorAll('[data-spk]').forEach(b => { b.checked = on[+b.dataset.spk]; });
+  const desk = (sc.outputs || 0) < (sc.speakers || []).length;
+  $('spkRows').hidden = $('allSpk').hidden = desk;
   const voices = Object.entries(sc.voices || {}).map(([v, n]) => `${v} (${n})`).join(', ');
   $('owlInfo').textContent = sc.online ? (sc.owls ? `Owl recordings: ${voices}.` : 'No owl recordings found. Add them to ambientSounds/owls, then press Update.') : '';
   document.querySelectorAll('[data-test]').forEach(b => b.classList.toggle('active', +b.dataset.test === sc.test && sc.test >= 0));
@@ -191,6 +211,13 @@ function render() {
   $('stopBtn').classList.toggle('primary', live && !sc.playing);
 }
 
+// Which speakers are on: what SuperCollider reports, else the saved setting.
+function speakersOn() {
+  const n = (st.sc.speakers || []).length, src = (st.sc.on && st.sc.on.length) ? st.sc.on : (st.settings.speakers || []);
+  return Array.from({length:n}, (_, i) => src[i] !== false);
+}
+const setSpeakers = on => post('/api/settings', {speakers:on}).then(refresh);
+
 function refresh() {
   return fetch('/api/status').then(r => r.json()).then(s => { st = s; if (!built) build(); render(); }).catch(() => {
     $('dot').className = 'dot'; $('statusText').textContent = 'Pi not reachable';
@@ -201,7 +228,8 @@ $('playBtn').onclick = () => cmd('start', 3.0);
 $('stopBtn').onclick = () => cmd('stop', 3.0);
 $('autoBtn').onclick = () => cmd('auto');
 $('resetScene').onclick = () => post('/api/settings', {sceneReset: editing}).then(refresh);
-$('birdsOn').onchange = e => post('/api/settings', {birds:e.target.checked}).then(refresh);
+$('owlsOn').onchange = e => post('/api/settings', {owls:e.target.checked}).then(refresh);
+$('allSpk').onclick = () => setSpeakers(speakersOn().map(() => true));
 $('master').oninput = e => { dragging = true; $('masterVal').textContent = (+e.target.value).toFixed(2); };
 $('master').onchange = e => { dragging = false; post('/api/settings', {master:+e.target.value}); };
 $('boost').oninput = e => { dragging = true; $('boostVal').textContent = `${e.target.value} dB`; };
