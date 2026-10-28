@@ -5,6 +5,8 @@
 # /etc/NetworkManager/system-connections; they never go in this repo.
 #   sudo ./tools/setup-wifi.sh "SplenguiNet_2.4GHz_EXT"                 # just this one
 #   sudo ./tools/setup-wifi.sh "SplenguiNet_2.4GHz_EXT" "Other network" # whichever is stronger
+# It also turns off Wi-Fi power saving, which makes the 3B's Wi-Fi drop off
+# and not come back, and tells NetworkManager to never stop retrying.
 # Safe to run over SSH: an existing connection to the same network is updated
 # in place, not dropped.
 set -euo pipefail
@@ -41,7 +43,7 @@ for ssid in "$@"; do
     nmcli connection add type wifi ifname wlan0 con-name "$name" ssid "$ssid" >/dev/null
   fi
   nmcli connection modify "$name" connection.autoconnect yes connection.autoconnect-priority 10 \
-    connection.autoconnect-retries 0 802-11-wireless.band bg
+    connection.autoconnect-retries 0 802-11-wireless.band bg 802-11-wireless.powersave 2
   if [ -n "$pw" ]; then
     nmcli connection modify "$name" wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$pw"
   fi
