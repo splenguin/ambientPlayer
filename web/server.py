@@ -156,8 +156,11 @@ def background():
             pi_cpu["cores"] = [round(100 * (b1 - b0) / max(t1 - t0, 1)) for (b0, t0), (b1, t1) in zip(prev, cur)]
         prev = cur
         st = read_status()
-        if st.get("online") and st.get("boot") != seen_boot:
-            time.sleep(3)  # let the patch finish building its layers
+        # Wait until the patch has built its layers: SuperCollider writes
+        # status (with no layers yet) while it is still booting, and settings
+        # sent before then were silently dropped.
+        if st.get("online") and st.get("layers") and st.get("boot") != seen_boot:
+            time.sleep(1)
             seen_boot = st.get("boot")
             with lock:
                 push_settings()
