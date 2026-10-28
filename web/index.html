@@ -40,8 +40,10 @@
     <button id="stopBtn">■ Stop</button>
   </div>
   <div class="row"><label>Volume</label><input type="range" id="master" min="0" max="1" step="0.01"><span class="val" id="masterVal"></span></div>
-  <div class="row"><label>Boost</label><input type="range" id="boost" min="0" max="24" step="1"><span class="val" id="boostVal"></span></div>
-  <div style="color:var(--dim);font-size:14px">Boost lifts everything to suit the amps; a limiter stops it clipping. Set it so Volume at full is as loud as you'd ever want.</div>
+  <div class="row"><label>Boost</label><input type="range" id="boost" min="0" max="36" step="1"><span class="val" id="boostVal"></span></div>
+  <div class="row"><label>Limit</label><input type="range" id="limit" min="-30" max="0" step="1"><span class="val" id="limitVal"></span></div>
+  <div class="row"><label>Low cut</label><input type="range" id="lowcut" min="20" max="200" step="5"><span class="val" id="lowcutVal"></span></div>
+  <div style="color:var(--dim);font-size:14px">Limit is the most the amps will ever be sent, however busy the scene. If an amp drops out, lower Limit until it stops, then raise Boost to bring the quiet parts up. Low cut removes rumble too deep for the speakers, which only loads the amps.</div>
 </section>
 
 <section>
@@ -176,6 +178,8 @@ function render() {
   if (!dragging) {
     $('master').value = set.master; $('masterVal').textContent = (+set.master).toFixed(2);
     $('boost').value = set.boost ?? 0; $('boostVal').textContent = `${set.boost ?? 0} dB`;
+    $('limit').value = set.limit ?? -1; $('limitVal').textContent = `${set.limit ?? -1} dB`;
+    $('lowcut').value = set.lowcut ?? 40; $('lowcutVal').textContent = `${set.lowcut ?? 40} Hz`;
     document.querySelectorAll('[data-layer]').forEach(r => {
       const v = (set.trims || {})[r.dataset.layer] ?? 1;
       r.value = v; r.nextElementSibling.textContent = (+v).toFixed(2);
@@ -234,6 +238,10 @@ $('master').oninput = e => { dragging = true; $('masterVal').textContent = (+e.t
 $('master').onchange = e => { dragging = false; post('/api/settings', {master:+e.target.value}); };
 $('boost').oninput = e => { dragging = true; $('boostVal').textContent = `${e.target.value} dB`; };
 $('boost').onchange = e => { dragging = false; post('/api/settings', {boost:+e.target.value}); };
+$('limit').oninput = e => { dragging = true; $('limitVal').textContent = `${e.target.value} dB`; };
+$('limit').onchange = e => { dragging = false; post('/api/settings', {limit:+e.target.value}); };
+$('lowcut').oninput = e => { dragging = true; $('lowcutVal').textContent = `${e.target.value} Hz`; };
+$('lowcut').onchange = e => { dragging = false; post('/api/settings', {lowcut:+e.target.value}); };
 const saveSchedule = () => post('/api/settings', {schedule:{enabled:$('schOn').checked, on:$('schStart').value, off:$('schEnd').value}});
 ['schOn', 'schStart', 'schEnd'].forEach(id => $(id).onchange = saveSchedule);
 $('updateBtn').onclick = () => {

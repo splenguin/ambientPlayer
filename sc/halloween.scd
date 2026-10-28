@@ -552,8 +552,13 @@ s.waitForBoot {
 				* if(name == \owls) { Lag.kr(\birds.kr(1), 4) } { 1 }
 		}.sum;
 		sig = sig + (FreeVerb.ar(sig, 1, 0.9, 0.6) * VarLag.kr(\verb.kr(0.15), fade, warp: \sin));
-		// \boost (dB) lifts the whole mix to suit the amps; the limiter catches peaks.
-		sig = Limiter.ar(LeakDC.ar(sig) * Lag.kr(\master.kr(1), 1) * Lag.kr(\boost.kr(0), 1).dbamp, 0.9);
+		// \boost (dB) lifts the whole mix to suit the amps. \lowcut (Hz) removes
+		// rumble too deep for the speakers, which only loads the amps. The
+		// limiter holds every output at or below \limit (dB below full scale),
+		// so the amps never see more than that, however busy the scene.
+		sig = HPF.ar(HPF.ar(LeakDC.ar(sig), Lag.kr(\lowcut.kr(40), 1)), Lag.kr(\lowcut.kr(40), 1));
+		sig = Limiter.ar(sig * Lag.kr(\master.kr(1), 1) * Lag.kr(\boost.kr(0), 1).dbamp,
+			Lag.kr(\limit.kr(-1), 1).dbamp, 0.02);
 		if(desk.not) {
 			// each patch channel to its real output, or, when that speaker is
 			// switched off, to a speaker that is on (see ~setSpeakers)

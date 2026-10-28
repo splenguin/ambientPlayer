@@ -42,6 +42,8 @@ SC_ADDR = ("127.0.0.1", 57120)
 DEFAULT_SETTINGS = {
     "master": 0.8,
     "boost": 0.0,  # dB before the limiter
+    "limit": -1.0,  # limiter ceiling, dB below full scale
+    "lowcut": 40.0,  # high-pass on every output, Hz
     "owls": True,  # was "birds"; renamed so an old "off" doesn't keep the owls silent
     "speakers": [],  # on/off per output; empty = all on
     "trims": {},
@@ -117,6 +119,8 @@ def push_settings():
     """Send saved master, trims, owls, speakers and scene edits to SuperCollider (after it (re)starts)."""
     send_osc("/master", float(settings["master"]))
     send_osc("/boost", float(settings["boost"]))
+    send_osc("/limit", float(settings["limit"]))
+    send_osc("/lowcut", float(settings["lowcut"]))
     send_osc("/birds", int(bool(settings["owls"])))
     if settings["speakers"]:
         send_osc("/speakers", *[int(bool(x)) for x in settings["speakers"]])
@@ -247,8 +251,14 @@ class Handler(BaseHTTPRequestHandler):
                 if "master" in req:
                     settings["master"] = min(max(float(req["master"]), 0.0), 1.0)
                     send_osc("/master", settings["master"])
+                if "limit" in req:
+                    settings["limit"] = min(max(float(req["limit"]), -30.0), 0.0)
+                    send_osc("/limit", settings["limit"])
+                if "lowcut" in req:
+                    settings["lowcut"] = min(max(float(req["lowcut"]), 20.0), 200.0)
+                    send_osc("/lowcut", settings["lowcut"])
                 if "boost" in req:
-                    settings["boost"] = min(max(float(req["boost"]), 0.0), 24.0)
+                    settings["boost"] = min(max(float(req["boost"]), 0.0), 36.0)
                     send_osc("/boost", settings["boost"])
                 if "owls" in req:
                     settings["owls"] = bool(req["owls"])

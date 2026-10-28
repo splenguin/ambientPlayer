@@ -10,7 +10,9 @@
 //   /stop [fade]           fade the sound out (the patch keeps running silently)
 //   /sceneSet <scene> <key> <value>  change one value of a scene, e.g. fogAmp or verb
 //   /sceneReset <scene>    put a scene back to its original values
-//   /boost <0..24>         extra gain in dB before the limiter (default 0)
+//   /boost <0..36>         extra gain in dB before the limiter (default 0)
+//   /limit <-30..0>        the limiter's ceiling in dB below full scale (default -1)
+//   /lowcut <20..200>      high-pass on every output, Hz (default 40)
 //   /birds <0|1>           owls off or on
 //   /speakers <0|1> ...    which speakers are on, one value per output, e.g.
 //                          /speakers 1 0 0 0 for speaker 1 alone. Sound meant
@@ -29,7 +31,7 @@
 var dir = thisProcess.nowExecutingPath.dirname;
 var statusPath = "AMBIENT_STATUS".getenv ? "/tmp/ambient-status.json";
 var bootTime = Date.getDate.rawSeconds.asInteger;
-var playing = true, master = 1.0, boost = 0, trims = IdentityDictionary.new;
+var playing = true, master = 1.0, boost = 0, limit = -1, lowcut = 40, trims = IdentityDictionary.new;
 var birds = true, testing = -1, testTask, restTask;
 // While stopped or testing speakers, the synth layers and the mixer pause so
 // the Pi's CPU is free (see ~updateSleep in halloween.scd).
@@ -88,9 +90,17 @@ OSCdef(\ambStop, { |msg|
 	rest.(num.(msg[1], 10) + 1);
 }, '/stop');
 OSCdef(\ambBoost, { |msg|
-	boost = num.(msg[1], 0).clip(0, 24);
+	boost = num.(msg[1], 0).clip(0, 36);
 	Ndef(\mix).set(\boost, boost);
 }, '/boost');
+OSCdef(\ambLimit, { |msg|
+	limit = num.(msg[1], -1).clip(-30, 0);
+	Ndef(\mix).set(\limit, limit);
+}, '/limit');
+OSCdef(\ambLowcut, { |msg|
+	lowcut = num.(msg[1], 40).clip(20, 200);
+	Ndef(\mix).set(\lowcut, lowcut);
+}, '/lowcut');
 OSCdef(\ambSceneSet, { |msg|
 	~setScene.(sym.(msg[1]), sym.(msg[2]), num.(msg[3], 0).clip(0, 2));
 }, '/sceneSet');
@@ -147,10 +157,10 @@ OSCdef(\ambTest, { |msg|
 Routine {
 	loop {
 		var esc = { |x| x.asString.replace("\\", "\\\\").replace("\"", "\\\"") };
-		var json = "{\"boot\": %, \"scene\": \"%\", \"auto\": %, \"playing\": %, \"master\": %, \"boost\": %, \"outputs\": %, \"speakers\": [%], \"voices\": {%}, \"birds\": %, \"on\": [%], \"owls\": %, \"test\": %, \"cpuAvg\": %, \"cpuPeak\": %, \"layers\": [%], \"scenes\": [%], \"trims\": {%}, \"paused\": [%], \"sceneValues\": {%}}";
+		var json = "{\"boot\": %, \"scene\": \"%\", \"auto\": %, \"playing\": %, \"master\": %, \"boost\": %, \"limit\": %, \"lowcut\": %, \"outputs\": %, \"speakers\": [%], \"voices\": {%}, \"birds\": %, \"on\": [%], \"owls\": %, \"test\": %, \"cpuAvg\": %, \"cpuPeak\": %, \"layers\": [%], \"scenes\": [%], \"trims\": {%}, \"paused\": [%], \"sceneValues\": {%}}";
 		var f;
 		json = json.format(
-			bootTime, esc.(~currentScene ? ""), Tdef(\scenes).isPlaying, playing, master, boost,
+			bootTime, esc.(~currentScene ? ""), Tdef(\scenes).isPlaying, playing, master, boost, limit, lowcut,
 			~outputs,
 			(~roles ? []).collect { |r| "\"%\"".format(esc.(r)) }.join(", "),
 			(~owlVoices ?? { () }).asAssociations.collect { |a| "\"%\": %".format(esc.(a.key), a.value) }.join(", "),
