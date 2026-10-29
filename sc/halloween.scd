@@ -350,20 +350,24 @@ s.waitForBoot {
 		Array.fill(n, { |i| if(i >= ground) { Silent.ar } { voice.value } })
 	});
 
-	// Wind: gusts that rise and fall and sweep across the yard from one ground
-	// speaker to the next, a soft broad whoosh that brightens as a gust
-	// builds, with a faint sigh through the branches on the strongest ones.
-	// The tree speakers get a thinner, higher share. Smooth noise only: no
-	// grains, nothing that crackles.
+	// Wind: the classic spooky cartoon wind, a breathy "whoooOOOooo". Noise
+	// through narrow resonances gives it a pitch that slides up as a gust
+	// builds and sinks as it dies, louder at the top. A second, quieter voice
+	// moans along a little higher. Gusts sweep across the yard from one ground
+	// speaker to the next; the tree speakers get a thinner, higher share. The
+	// top end is rolled off, so there's no hiss.
 	Ndef(\wind, {
-		var gust = LFNoise2.kr(0.045).range(0, 1).squared;
+		var gust = LFNoise2.kr(0.05).range(0, 1).squared;
 		Array.fill(n, { |i|
 			var up = i >= ground;
-			var g = DelayN.kr(gust, 12, if(up, 5, i * 4) + Rand(0, 1.5)) * LFNoise2.kr(0.3).range(0.75, 1);
-			var cf = g.linexp(0, 1, if(up, 500, 250), if(up, 1600, 900)) * LFNoise2.kr(0.2).range(0.85, 1.15);
-			var whoosh = BPF.ar(PinkNoise.ar, cf, 1.1);
-			var sigh = BPF.ar(PinkNoise.ar, cf * 1.8, 0.18) * g.squared * 0.7;
-			(whoosh + sigh) * g.linlin(0, 1, 0.04, 1) * if(up, 0.25, 0.45)
+			var g = DelayN.kr(gust, 12, if(up, 5, i * 4) + Rand(0, 1.5)) * LFNoise2.kr(0.25).range(0.8, 1);
+			var f = g.linexp(0, 1, 200, 650) * LFNoise2.kr(0.12).range(0.92, 1.08) * if(up, 1.4, 1) * Rand(0.95, 1.05);
+			var noise = PinkNoise.ar;
+			var moan = Resonz.ar(noise, f, 0.03) * 7;
+			var moan2 = Resonz.ar(noise, f * LFNoise2.kr(0.1).range(1.3, 1.45), 0.03) * 3.5 * g;
+			var breath = BPF.ar(noise, f * 1.2, 0.9) * 0.12;
+			var sig = LPF.ar(moan + moan2 + breath, 2000);
+			sig * g.linlin(0, 1, 0.03, 1) * if(up, 0.16, 0.28)
 		})
 	});
 
