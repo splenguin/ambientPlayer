@@ -24,7 +24,7 @@
   .row input[type=range] { flex:1; min-width:0; accent-color:var(--accent); }
   .row .val.edited { color:var(--accent); }
   .row .tag { width:52px; flex:none; font-size:12px; color:var(--dim); }
-  .row .val { width:48px; text-align:right; color:var(--dim); font-variant-numeric:tabular-nums; }
+  .row .val { width:56px; text-align:right; color:var(--dim); font-variant-numeric:tabular-nums; }
   input[type=time] { background:#23262d; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px; font:inherit; }
   pre { white-space:pre-wrap; font-size:12px; color:var(--dim); margin:10px 0 0; }
 </style>
@@ -95,6 +95,14 @@ const post = (url, body) => fetch(url, {method:'POST', headers:{'Content-Type':'
 const cmd = (c, ...args) => post('/api/cmd', {cmd:c, args}).then(refresh);
 let built = false, dragging = false, st = {sc:{}, settings:{}}, editing = null;
 
+// Layer levels are shown and set in decibels, so the quiet end has fine steps
+// (1 dB, down to -40 dB; the far left is off). SuperCollider still gets plain
+// amplitudes.
+const DB_MIN = -40;
+const toDb = a => a <= 0 ? DB_MIN : Math.max(DB_MIN, Math.round(20 * Math.log10(a)));
+const fromDb = d => d <= DB_MIN ? 0 : Math.pow(10, d / 20);
+const fmtDb = d => d <= DB_MIN ? 'off' : `${d > 0 ? '+' : ''}${d} dB`;
+
 // Scene keys shown in the editor: one level per layer, then reverb and cricket pace.
 function sceneKeys(sc) {
   return (sc.layers || []).map(l => [l + 'Amp', label(l), 0, 1.5, l])
@@ -107,12 +115,20 @@ function buildEditor(name) {
   $('editName').textContent = label(name);
   sceneKeys(st.sc).forEach(([key, text, min, max, layer]) => {
     const row = document.createElement('div'); row.className = 'row';
-    row.innerHTML = `<label>${text}</label><input type="range" min="${min}" max="${max}" step="0.01"><span class="val"></span><span class="tag"></span>`;
+    const db = !!layer;   // layer levels in dB, reverb and pace as plain numbers
+    row.innerHTML = db
+      ? `<label>${text}</label><input type="range" min="${DB_MIN}" max="${Math.floor(20 * Math.log10(max))}" step="1"><span class="val"></span><span class="tag"></span>`
+      : `<label>${text}</label><input type="range" min="${min}" max="${max}" step="0.01"><span class="val"></span><span class="tag"></span>`;
     const [range, val, tag] = [row.querySelector('input'), row.querySelector('.val'), row.querySelector('.tag')];
     range.dataset.sceneKey = key; tag.dataset.layerTag = layer || '';
-    range.oninput = () => { val.textContent = (+range.value).toFixed(2); };
+    if (db) range.dataset.db = '1';
+    range.oninput = () => { val.textContent = db ? fmtDb(+range.value) : (+range.value).toFixed(2); };
     range.onpointerdown = () => dragging = true;
-    range.onchange = () => { dragging = false; post('/api/settings', {sceneSet:[editing, key, +range.value]}).then(refresh); };
+    range.onchange = () => {
+      dragging = false;
+      const v = db ? fromDb(+range.value) : +range.value;
+      post('/api/settings', {sceneSet:[editing, key, v]}).then(refresh);
+    };
     $('sceneRows').appendChild(row);
   });
 }
@@ -131,12 +147,12 @@ function build() {
   $('layers').innerHTML = '';
   (sc.layers || []).forEach(l => {
     const row = document.createElement('div'); row.className = 'row';
-    row.innerHTML = `<label>${label(l)}</label><input type="range" min="0" max="2" step="0.05"><span class="val"></span><button>Solo</button>`;
+    row.innerHTML = `<label>${label(l)}</label><input type="range" min="${DB_MIN}" max="6" step="1"><span class="val"></span><button>Solo</button>`;
     const [range, val, solo] = [row.querySelector('input'), row.querySelector('.val'), row.querySelector('button')];
     range.dataset.layer = l; solo.dataset.solo = l;
-    range.oninput = () => { val.textContent = (+range.value).toFixed(2); };
+    range.oninput = () => { val.textContent = fmtDb(+range.value); };
     range.onpointerdown = () => dragging = true;
-    range.onchange = () => { dragging = false; post('/api/settings', {trim:[l, +range.value]}); };
+    range.onchange = () => { dragging = false; post('/api/settings', {trim:[l, fromDb(+range.value)]}); };
     solo.onclick = () => cmd('solo', l);
     $('layers').appendChild(row);
   });
@@ -181,8 +197,8 @@ function render() {
     $('limit').value = set.limit ?? -1; $('limitVal').textContent = `${set.limit ?? -1} dB`;
     $('lowcut').value = set.lowcut ?? 40; $('lowcutVal').textContent = `${set.lowcut ?? 40} Hz`;
     document.querySelectorAll('[data-layer]').forEach(r => {
-      const v = (set.trims || {})[r.dataset.layer] ?? 1;
-      r.value = v; r.nextElementSibling.textContent = (+v).toFixed(2);
+      const d = toDb((set.trims || {})[r.dataset.layer] ?? 1);
+      r.value = d; r.nextElementSibling.textContent = fmtDb(d);
     });
   }
   $('owlsOn').checked = set.owls !== false;
@@ -202,7 +218,10 @@ function render() {
     const edits = (set.scenes || {})[sc.scene] || {};
     document.querySelectorAll('[data-scene-key]').forEach(r => {
       const k = r.dataset.sceneKey, v = values[k] ?? 0;
-      if (!dragging) { r.value = v; r.nextElementSibling.textContent = (+v).toFixed(2); }
+      if (!dragging) {
+        if (r.dataset.db) { const d = toDb(v); r.value = d; r.nextElementSibling.textContent = fmtDb(d); }
+        else { r.value = v; r.nextElementSibling.textContent = (+v).toFixed(2); }
+      }
       r.nextElementSibling.classList.toggle('edited', k in edits);
     });
     document.querySelectorAll('[data-layer-tag]').forEach(t => {
