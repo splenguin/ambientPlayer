@@ -22,6 +22,7 @@
 //   ~birds.(false);           turn the owls off (true to bring them back)
 //   ~setSpeakers.([true, false, false, true]);  only speakers 1 and 4 (one per output)
 //   ~auto.();                 resume automatic scene changes after ~scene/~solo
+//   ~nextScene.();            skip to the next scene now (20 s fade) and keep drifting
 //   ~trim.(\fog, 0.5);        turn one layer down (or up, max 2) in every scene
 //
 // ~speakers gives each output a role, in output order:
@@ -218,7 +219,7 @@ s.waitForBoot {
 		var ratios = [0.5, 1, 1.183, 1.506, 2, 2.514, 2.662, 3.011, 4.166];
 		var strike = (Impulse.ar(0) * 0.5) + (LPF.ar(WhiteNoise.ar, 3000) * EnvGen.ar(Env.perc(0.001, 0.02)) * 0.2);
 		var sig = Klank.ar(`[ratios, [1, 0.7, 0.6, 0.35, 0.8, 0.3, 0.25, 0.2, 0.1], [14, 9, 7, 6, 5, 3.5, 3, 2.5, 1.5]],
-			strike, freq) * 0.05;
+			strike, freq) * 0.12;
 		Line.kr(0, 0, 15, doneAction: 2);
 		sig = LPF.ar(sig, far.linexp(0, 1, 5000, 1500)) * far.linlin(0, 1, 1, 0.4) * amp;
 		Out.ar(out + chan, sig);
@@ -266,6 +267,10 @@ s.waitForBoot {
 			owlChans.(v).collect { |c| upOuts[c - ground] + 1 }).postln;
 	};
 
+	s.sync;
+	// Recordings come in at all sorts of levels; bring each one's peak up to
+	// the same height so the owls sit at a predictable level.
+	owlVoices.do { |bufs| bufs.do { |b| b.normalize(0.9) } };
 	s.sync;
 
 	// The layers run side by side in one group: on supernova (see main.scd) a
@@ -515,7 +520,7 @@ s.waitForBoot {
 			var len = min(dur, rrand(6.0, 12.0));
 			var start = if(dur > len) { rrand(0, (dur - len) * buf.sampleRate * rate) } { 0 };
 			Pbind(\instrument, \call, \chan, chan, \buf, buf, \rate, rate, \start, start,
-				\len, len, \far, far, \amp, rrand(0.15, 0.3), \dur, Pseq([len]))
+				\len, len, \far, far, \amp, rrand(0.35, 0.55), \dur, Pseq([len]))
 		};
 		var playable = { owlVoices.keys.asArray.select { |v| owlChans.(v).notEmpty } };
 		sp.wait(rrand(15, 45));
@@ -655,10 +660,23 @@ s.waitForBoot {
 		applyScene.(\solo, fade);
 	};
 
+	// Skip ahead: move on to one of the scenes that may follow this one now,
+	// over a 20 second fade, and keep drifting from there.
+	~nextScene = {
+		var options = next[~currentScene ? \clear] ?? { next[\clear] };
+		~startScene = options.choose; ~startFade = 20;
+		Tdef(\scenes).stop; Tdef(\scenes).reset; Tdef(\scenes).play;
+	};
+
 	Tdef(\scenes, {
-		var name = if(~currentScene.notNil and: { next[~currentScene].notNil }) { ~currentScene } { \clear };
+		var name = ~startScene ?? {
+			if(~currentScene.notNil and: { next[~currentScene].notNil }) { ~currentScene } { \clear }
+		};
+		var fade = ~startFade;
+		~startScene = nil; ~startFade = nil;
 		loop {
-			applyScene.(name);
+			applyScene.(name, fade);
+			fade = nil;
 			rrand(sceneTime * 0.7, sceneTime * 1.3).wait;
 			name = next[name].choose;
 		}

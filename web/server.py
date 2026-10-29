@@ -240,7 +240,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if self.path == "/api/cmd":
             cmd, args = req.get("cmd"), req.get("args", [])
-            allowed = {"scene", "auto", "solo", "start", "stop", "test"}
+            allowed = {"scene", "auto", "next", "solo", "start", "stop", "test"}
             if cmd not in allowed or not isinstance(args, list):
                 return self._send(400, {"error": "unknown command"})
             send_osc("/" + cmd, *args)

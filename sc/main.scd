@@ -3,6 +3,7 @@
 //
 //   /scene <name> [fade]   jump to a scene: clear fogRising deepFog windy creaking
 //   /auto                  resume automatic scene changes
+//   /next                  skip to the next scene now and keep drifting
 //   /solo <layer>          one layer alone: crickets fog drone wind spirits whispers creak gate bell howl owls
 //   /trim <layer> <0..2>   turn one layer down or up in every scene
 //   /master <0..1>         overall level
@@ -68,6 +69,7 @@ if(envOr.("AMBIENT_ENGINE", "scsynth") == "supernova" and: { File.exists("/usr/b
 
 OSCdef(\ambScene, { |msg| ~scene.(sym.(msg[1]), msg[2] !? (_.asFloat)) }, '/scene');
 OSCdef(\ambAuto, { ~auto.() }, '/auto');
+OSCdef(\ambNext, { ~nextScene.() }, '/next');
 OSCdef(\ambSolo, { |msg| ~solo.(sym.(msg[1])) }, '/solo');
 OSCdef(\ambTrim, { |msg|
 	var layer = sym.(msg[1]), amp = num.(msg[2], 1).clip(0, 2);

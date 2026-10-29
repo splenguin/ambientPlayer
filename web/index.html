@@ -49,7 +49,7 @@
 <section>
   <h2>Scene</h2>
   <div class="grid" id="scenes"></div>
-  <div class="row"><button id="autoBtn">Drift automatically</button></div>
+  <div class="row"><button id="autoBtn">Drift automatically</button><button id="nextBtn">Next scene</button></div>
   <div id="sceneEditor" hidden>
     <h2 style="margin-top:14px">Scene settings: <span id="editName"></span></h2>
     <div style="color:var(--dim);font-size:14px">Changes play straight away and are saved into this scene. Layers at zero are paused to save CPU.</div>
@@ -250,6 +250,7 @@ function refresh() {
 $('playBtn').onclick = () => cmd('start', 3.0);
 $('stopBtn').onclick = () => cmd('stop', 3.0);
 $('autoBtn').onclick = () => cmd('auto');
+$('nextBtn').onclick = () => cmd('next');
 $('resetScene').onclick = () => post('/api/settings', {sceneReset: editing}).then(refresh);
 $('owlsOn').onchange = e => post('/api/settings', {owls:e.target.checked}).then(refresh);
 $('allSpk').onclick = () => setSpeakers(speakersOn().map(() => true));
